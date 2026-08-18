@@ -7,6 +7,7 @@ coverage/
 !.env.example
 appsettings.json
 appsettings.*.json
+.agents/
 bench/fixtures/J-large-wide/
 bench/results/diffs/
 bench/results/judges/
