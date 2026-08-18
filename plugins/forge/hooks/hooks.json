@@ -6,8 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/scripts/hook.mjs\"",
-            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\hook.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/scripts/hook.mjs\" --codex-only",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\hook.mjs\" --codex-only",
             "statusMessage": "Loading Forge"
           }
         ]
@@ -18,8 +18,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "node \"${PLUGIN_ROOT}/scripts/session-end.mjs\"",
-            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\session-end.mjs\"",
+            "command": "node \"${CLAUDE_PLUGIN_ROOT:-${PLUGIN_ROOT}}/scripts/session-end.mjs\" --codex-only",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\session-end.mjs\" --codex-only",
             "statusMessage": "Saving Forge telemetry"
           }
         ]

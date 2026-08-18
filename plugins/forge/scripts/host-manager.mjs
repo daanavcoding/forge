@@ -429,7 +429,20 @@ export async function installCodex({
 
   const marketplace = runJsonCommand(CODEX_COMMAND, codexArgs(['plugin', 'marketplace', 'list', '--json']), { runner });
   let marketplaceName = marketplace.value.marketplaces?.find((entry) => marketplaceMatches(entry, REPO_ROOT))?.name;
+  let replacedMarketplace = null;
   if (!marketplaceName) {
+    const conflicting = marketplace.value.marketplaces?.find((entry) => entry.name === 'forge');
+    if (conflicting) {
+      if (!force) {
+        throw new Error(`Codex marketplace forge points to a different checkout (${conflicting.root || 'unknown'}); rerun with --force to replace only forge@forge`);
+      }
+      const oldPlugins = runJsonCommand(CODEX_COMMAND, codexArgs(['plugin', 'list', '--marketplace', 'forge', '--json']), { runner }).value;
+      if (installedPlugin(oldPlugins, `${PLUGIN_NAME}@forge`)) {
+        runJsonCommand(CODEX_COMMAND, codexArgs(['plugin', 'remove', `${PLUGIN_NAME}@forge`, '--json']), { runner });
+      }
+      runJsonCommand(CODEX_COMMAND, codexArgs(['plugin', 'marketplace', 'remove', 'forge', '--json']), { runner });
+      replacedMarketplace = conflicting.root || 'forge';
+    }
     runJsonCommand(CODEX_COMMAND, codexArgs(['plugin', 'marketplace', 'add', REPO_ROOT, '--json']), { runner });
     const refreshed = runJsonCommand(CODEX_COMMAND, codexArgs(['plugin', 'marketplace', 'list', '--json']), { runner });
     marketplaceName = refreshed.value.marketplaces?.find((entry) => marketplaceMatches(entry, REPO_ROOT))?.name;
@@ -452,6 +465,7 @@ export async function installCodex({
     mode: managedDir ? 'managed' : 'plugin',
     dry_run: false,
     marketplace: marketplaceName,
+    replaced_marketplace: replacedMarketplace,
     plugin,
     install: installed.value,
     pruned,
@@ -485,9 +499,24 @@ export function installClaude({
 
   const marketplaces = runJsonCommand(CLAUDE_COMMAND, ['plugin', 'marketplace', 'list', '--json'], { cwd: project, runner });
   let marketplaceName = marketplaces.value.find((entry) => marketplaceMatches(entry, REPO_ROOT))?.name;
+  let replacedMarketplace = null;
   if (!marketplaceName) {
     const conflicting = marketplaces.value.find((entry) => entry.name === 'forge');
-    if (conflicting) throw new Error('Claude already has a different marketplace named forge; refusing to replace it');
+    if (conflicting) {
+      if (!force) {
+        throw new Error(`Claude marketplace forge points to a different checkout (${conflicting.path || conflicting.installLocation || 'unknown'}); rerun with --force to replace only forge@forge`);
+      }
+      const oldPlugins = runJsonCommand(CLAUDE_COMMAND, ['plugin', 'list', '--json'], { cwd: project, runner }).value;
+      const oldPlugin = installedPlugin(oldPlugins, `${PLUGIN_NAME}@forge`);
+      if (oldPlugin) {
+        const uninstallScope = oldPlugin.scope || scope;
+        const removed = runCommand(CLAUDE_COMMAND, ['plugin', 'uninstall', `${PLUGIN_NAME}@forge`, '--scope', uninstallScope, '--yes'], { cwd: project, runner });
+        if (removed.status !== 0) throw new Error(`Claude old Forge uninstall failed: ${removed.stderr || removed.stdout}`);
+      }
+      const removedMarketplace = runCommand(CLAUDE_COMMAND, ['plugin', 'marketplace', 'remove', 'forge'], { cwd: project, runner });
+      if (removedMarketplace.status !== 0) throw new Error(`Claude old Forge marketplace removal failed: ${removedMarketplace.stderr || removedMarketplace.stdout}`);
+      replacedMarketplace = conflicting.path || conflicting.installLocation || 'forge';
+    }
     const added = runCommand(CLAUDE_COMMAND, ['plugin', 'marketplace', 'add', REPO_ROOT, '--scope', scope], { cwd: project, runner });
     if (added.status !== 0) throw new Error(`Claude marketplace add failed: ${added.stderr || added.stdout}`);
     const refreshed = runJsonCommand(CLAUDE_COMMAND, ['plugin', 'marketplace', 'list', '--json'], { cwd: project, runner });
@@ -527,7 +556,7 @@ export function installClaude({
     if (existing === null || force) writeAtomic(settings.path, settings.content);
     settings.written = true;
   }
-  return { client: 'claude', scope, dry_run: false, marketplace: marketplaceName, plugin, action, managed_settings: settings };
+  return { client: 'claude', scope, dry_run: false, marketplace: marketplaceName, replaced_marketplace: replacedMarketplace, plugin, action, managed_settings: settings };
 }
 
 function inspectFiles() {

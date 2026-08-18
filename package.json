@@ -1,6 +1,6 @@
 {
   "name": "forge-agent-plugin",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Portable Agent Plugin with a verified coding workflow",
   "private": true,
   "type": "module",

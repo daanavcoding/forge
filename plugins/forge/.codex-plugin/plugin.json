@@ -1,12 +1,11 @@
 {
   "name": "forge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Run the verified Forge workflow in one host session, plus a public skill for context-aware verified commits.",
   "author": {
     "name": "daanavcoding"
   },
   "skills": "./skills/",
-  "hooks": "./hooks/hooks.json",
   "interface": {
     "displayName": "Forge",
     "shortDescription": "Verified coding workflow without nested model loops",

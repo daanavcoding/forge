@@ -11,6 +11,7 @@ const MARKER = /^(?:\$(?<dollar>forge)|\/(?:(?<slash>forge)|forge:(?<skill>forge
 const PLUGIN_ATTACHMENT = /^\[\$forge:(?<skill>forge)\]\([^\r\n)]*\)\s*(?<task>[\s\S]*)$/i;
 const MAX_GRAPHIFY_CONTEXT_BYTES = 2_048;
 const MAX_TRANSCRIPT_TAIL_BYTES = 2 * 1024 * 1024;
+const PLUGIN_VERSION = JSON.parse(fs.readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')).version;
 const APPROVAL = /^(?:s[ií]|yes|approved|approve|adelante|ejecuta|ejecutar|execute|go ahead)(?:[,.!;:]?\s+(?:el\s+plan|the\s+plan|ahora|now|por\s+favor|please|todo))*[.!]?$/i;
 const FORGE_PLAN = /^#{1,3}\s+Forge plan\s*$/im;
 
@@ -216,7 +217,7 @@ export function handle(payload = {}, dependencies = {}) {
     'Record the selected skill names and short evidence in the Forge summary telemetry.',
   ].join('\n');
   const facts = {
-    forge_plugin: '1.0.0',
+    forge_plugin: PLUGIN_VERSION,
     host,
     activation,
     task,
@@ -286,6 +287,11 @@ export function handle(payload = {}, dependencies = {}) {
 }
 
 async function main() {
+  const claudeOnlyHost = process.env.CLAUDE_PLUGIN_ROOT && !process.env.PLUGIN_ROOT;
+  if (process.argv.includes('--codex-only') && claudeOnlyHost) {
+    process.stdout.write('{}');
+    return;
+  }
   let raw = '';
   for await (const chunk of process.stdin) raw += chunk;
   let payload = {};

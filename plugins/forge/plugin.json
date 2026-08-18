@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "forge",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Verified coding workflows plus a public context-aware commit skill that plan, implement, test, review, and summarize one task in one agent session.",
   "author": {
     "name": "daanavcoding"

@@ -1,7 +1,6 @@
-# Forge v5 current contract
+# Forge current contract
 
-This note supersedes the original fixed-prefix v5 design described in
-`forge-v5-plan.md`.
+This document defines the current public workflow contract.
 
 - Forge uses one explicit workflow: it presents a concise plan, stops for
   explicit approval in a later user turn, then implements, verifies, reviews,

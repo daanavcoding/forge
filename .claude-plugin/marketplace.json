@@ -9,7 +9,7 @@
       "name": "forge",
       "source": "./plugins/forge",
       "description": "Run the verified Forge workflow with review and resumable terminal evidence",
-      "version": "1.0.0",
+      "version": "1.0.1",
       "category": "development",
       "tags": [
         "coding",

@@ -83,11 +83,32 @@ after the host trace closes and replaces only the copied `## Telemetry` section
 with the observed trace usage. It labels benchmark weighted units and
 API-equivalent USD separately from the unavailable subscription credits.
 
-## Local Codex installation
+## Remote installation
+
+End users install directly from the GitHub marketplace; they do not clone the
+repository or run npm:
+
+```powershell
+codex plugin marketplace add daanavcoding/forge --ref main
+codex plugin add forge@forge
+
+claude plugin marketplace add daanavcoding/forge
+claude plugin install forge@forge --scope user
+```
+
+Both clients fetch the Git repository into their own marketplace/plugin cache
+and resolve the relative `plugins/forge` source declared by the corresponding
+marketplace. Codex still requires host-owned hook review and trust. Claude Code
+can activate an install in the current session with `/reload-plugins` when it
+does not activate immediately.
+
+## Local development and managed Codex installation
 
 Use the repository host manager to register the local marketplace and install
-`forge@forge`. Because `.codex-plugin/plugin.json` explicitly declares
-`hooks/hooks.json`, Codex materializes both hooks during installation. Codex
+`forge@forge`. Codex auto-discovers the canonical `hooks/hooks.json` directory
+and materializes both hooks during installation. The same portable directory is
+safe when Claude Code discovers it: its commands exit silently on a
+Claude-only host, while `claude/hooks.json` owns Claude context injection. Codex
 requires review/trust for non-managed command hooks; the setup command verifies
 and fails unless both definitions are enabled and trusted:
 

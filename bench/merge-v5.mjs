@@ -4,7 +4,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-const [firstFile, secondFile, outputFile = 'bench/results/v5-codex-complete-2026-08-10.json'] = process.argv.slice(2);
+const [firstFile, secondFile, outputFile = 'bench/results/merged.json'] = process.argv.slice(2);
 if (!firstFile || !secondFile) throw new Error('usage: node bench/merge-v5.mjs <initial-result> <repair-result> [output]');
 
 function read(file) {

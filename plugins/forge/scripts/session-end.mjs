@@ -57,6 +57,11 @@ async function readInput() {
 }
 
 async function main() {
+  const claudeOnlyHost = process.env.CLAUDE_PLUGIN_ROOT && !process.env.PLUGIN_ROOT;
+  if (process.argv.includes('--codex-only') && claudeOnlyHost) {
+    process.stdout.write('{}');
+    return;
+  }
   if (process.argv.includes('--worker')) {
     handle(await readInput());
     return;

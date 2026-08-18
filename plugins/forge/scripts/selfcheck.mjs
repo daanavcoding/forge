@@ -61,25 +61,42 @@ assert.deepEqual(
 const portableManifest = JSON.parse(fs.readFileSync(new URL('../plugin.json', import.meta.url), 'utf8'));
 const codexManifest = JSON.parse(fs.readFileSync(new URL('../.codex-plugin/plugin.json', import.meta.url), 'utf8'));
 const claudeManifest = JSON.parse(fs.readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'));
+const repositoryReadmeUrl = new URL('../../../README.md', import.meta.url);
+const repositoryPackageUrl = new URL('../../../package.json', import.meta.url);
+const sourceCheckout = fs.existsSync(repositoryPackageUrl)
+  && JSON.parse(fs.readFileSync(repositoryPackageUrl, 'utf8')).name === 'forge-agent-plugin';
+const codexMarketplaceUrl = new URL('../../../.agents/plugins/marketplace.json', import.meta.url);
 const claudeMarketplaceUrl = new URL('../../../.claude-plugin/marketplace.json', import.meta.url);
-const claudeMarketplace = fs.existsSync(claudeMarketplaceUrl)
-  ? JSON.parse(fs.readFileSync(claudeMarketplaceUrl, 'utf8'))
-  : null;
 assert.equal(portableManifest.$schema, 'https://agent-plugins.org/schemas/1.0.0/plugin.schema.json');
 assert.equal(portableManifest.name, 'forge');
 assert.match(portableManifest.version, /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/);
 assert.equal(codexManifest.name, portableManifest.name);
 assert.equal(codexManifest.version.split('+')[0], portableManifest.version);
 assert.equal(codexManifest.skills, './skills/');
-assert.equal(codexManifest.hooks, './hooks/hooks.json');
+assert.equal(codexManifest.hooks, undefined);
+assert.equal(fs.existsSync(new URL('../hooks/hooks.json', import.meta.url)), true);
 assert.equal(claudeManifest.name, portableManifest.name);
 assert.equal(claudeManifest.version, portableManifest.version);
 assert.equal(claudeManifest.skills, './skills/');
 assert.equal(claudeManifest.hooks, './claude/hooks.json');
-if (claudeMarketplace) {
+if (sourceCheckout) {
+  assert.equal(fs.existsSync(codexMarketplaceUrl), true, 'Codex marketplace must ship for remote installation');
+  assert.equal(fs.existsSync(claudeMarketplaceUrl), true, 'Claude marketplace must ship for remote installation');
+  const codexMarketplace = JSON.parse(fs.readFileSync(codexMarketplaceUrl, 'utf8'));
+  const claudeMarketplace = JSON.parse(fs.readFileSync(claudeMarketplaceUrl, 'utf8'));
+  const repositoryReadme = fs.readFileSync(repositoryReadmeUrl, 'utf8');
+  assert.equal(codexMarketplace.name, 'forge');
+  assert.equal(codexMarketplace.plugins[0].name, 'forge');
+  assert.equal(codexMarketplace.plugins[0].source.path, './plugins/forge');
+  assert.equal(codexMarketplace.plugins[0].policy.installation, 'AVAILABLE');
+  assert.equal(codexMarketplace.plugins[0].policy.authentication, 'ON_INSTALL');
   assert.equal(claudeMarketplace.name, 'forge');
   assert.equal(claudeMarketplace.plugins[0].source, './plugins/forge');
   assert.equal(claudeMarketplace.plugins[0].version, portableManifest.version);
+  assert.match(repositoryReadme, /codex plugin marketplace add daanavcoding\/forge --ref main/);
+  assert.match(repositoryReadme, /codex plugin add forge@forge/);
+  assert.match(repositoryReadme, /claude plugin marketplace add daanavcoding\/forge/);
+  assert.match(repositoryReadme, /claude plugin install forge@forge --scope user/);
 }
 
 function codexHookRunner(hooks) {
@@ -757,11 +774,33 @@ const pluginHooks = JSON.parse(fs.readFileSync(new URL('../hooks/hooks.json', im
 assert.equal(pluginHooks.PreToolUse, undefined);
 assert.equal(pluginHooks.SessionEnd.length, 1);
 assert.match(pluginHooks.SessionEnd[0].hooks[0].command, /session-end\.mjs/);
+assert.match(pluginHooks.SessionEnd[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
+assert.match(pluginHooks.SessionEnd[0].hooks[0].command, /--codex-only/);
 const pluginMatcher = new RegExp(pluginHooks.UserPromptSubmit[0].matcher);
 assert.equal(pluginMatcher.test('$forge task'), true);
 assert.equal(pluginMatcher.test('/forge:forge task'), true);
 assert.equal(pluginMatcher.test('[$forge:forge](skill-path) task'), true);
 assert.equal(pluginMatcher.test('ordinary prompt'), true);
+assert.match(pluginHooks.UserPromptSubmit[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
+assert.match(pluginHooks.UserPromptSubmit[0].hooks[0].command, /--codex-only/);
+const claudeCodexHook = spawnSync(process.execPath, [fileURLToPath(new URL('./hook.mjs', import.meta.url)), '--codex-only'], {
+  input: JSON.stringify({ prompt: '$forge must stay silent in Claude', cwd: tmp }),
+  encoding: 'utf8',
+  env: { ...process.env, CLAUDE_PLUGIN_ROOT: fileURLToPath(new URL('..', import.meta.url)) },
+});
+assert.equal(claudeCodexHook.status, 0, claudeCodexHook.stderr);
+assert.deepEqual(JSON.parse(claudeCodexHook.stdout), {});
+const compatibleCodexHook = spawnSync(process.execPath, [fileURLToPath(new URL('./hook.mjs', import.meta.url)), '--codex-only'], {
+  input: JSON.stringify({ prompt: '$forge must run when Codex exposes both roots', cwd: tmp }),
+  encoding: 'utf8',
+  env: {
+    ...process.env,
+    CLAUDE_PLUGIN_ROOT: fileURLToPath(new URL('..', import.meta.url)),
+    PLUGIN_ROOT: fileURLToPath(new URL('..', import.meta.url)),
+  },
+});
+assert.equal(compatibleCodexHook.status, 0, compatibleCodexHook.stderr);
+assert.match(JSON.parse(compatibleCodexHook.stdout).hookSpecificOutput.additionalContext, /"host":"codex"/);
 const claudeHooks = JSON.parse(fs.readFileSync(new URL('../claude/hooks.json', import.meta.url), 'utf8')).hooks;
 assert.equal(claudeHooks.PreToolUse, undefined);
 assert.match(claudeHooks.UserPromptSubmit[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
