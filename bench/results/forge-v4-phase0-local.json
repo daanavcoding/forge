@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-08-04T12:53:50.227Z",
+  "status": "pass-local-cross-process",
+  "scope": "separate UserPromptSubmit hook processes with one stable session_id and changing turn_id",
+  "turns": 3,
+  "samples": [
+    {
+      "bytes": 7480,
+      "sha256": "cd2fdd7a257b3c9cd406a410f440c2017db4fe65b54e9155e2e81734f9baf736"
+    },
+    {
+      "bytes": 7480,
+      "sha256": "cd2fdd7a257b3c9cd406a410f440c2017db4fe65b54e9155e2e81734f9baf736"
+    },
+    {
+      "bytes": 7480,
+      "sha256": "cd2fdd7a257b3c9cd406a410f440c2017db4fe65b54e9155e2e81734f9baf736"
+    }
+  ],
+  "deterministic_across_processes": true,
+  "host_session_trace": {
+    "status": "not-run",
+    "reason": "This probe does not start a Codex or Claude model turn; provider-session evidence requires an explicit paid benchmark run."
+  }
+}

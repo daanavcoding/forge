@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "forge",
+  "version": "1.0.0",
+  "description": "Verified coding workflows plus a public context-aware commit skill that plan, implement, test, review, and summarize one task in one agent session.",
+  "author": {
+    "name": "daanavcoding"
+  },
+  "keywords": [
+    "coding-agent",
+    "agent-skill",
+    "claude-code",
+    "opencode",
+    "cursor",
+    "antigravity",
+    "verification",
+    "code-review"
+  ]
+}

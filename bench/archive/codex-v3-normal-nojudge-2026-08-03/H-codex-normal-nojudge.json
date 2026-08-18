@@ -1,0 +1,262 @@
+{
+  "case": "H",
+  "host": "codex",
+  "judge_enabled": false,
+  "billing_mode": "subscription-only",
+  "extra_credits_allowed": false,
+  "direct_api_credentials_allowed": false,
+  "rows": [
+    {
+      "host": "codex",
+      "scenario": "H",
+      "arm": "solo",
+      "run": 1,
+      "commit": "22562832d9bfeb81d7e796fef1f47ce09ce00ff0",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 60680,
+      "model_elapsed_ms": 60536,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 18551,
+        "cache_write": 0,
+        "cache_read": 111616,
+        "output": 1767
+      },
+      "weighted_units": 40314.6,
+      "calls": 1,
+      "session_id": "019fc7a8-3455-7123-9e62-56e5c95f293f",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ formats whole and partial cents (0.563ms)\n✔ rounds half a cent up (0.1152ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 74.0451\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Updated `toCents` to use `Math.round(amount * 100)` in [src/money.mjs](C:\\Users\\danie\\AppData\\Local\\Temp\\forge-bench-H-codex-solo-1-Pcne5I\\src\\money.mjs).\n\nResults:\n\n- `npm run lint`: failed because PowerShell blocked `npm.ps1`; `npm.cmd run lint` confirmed the configured linter command is missing.\n- `node --test`: passed — 2 tests, 0 failures.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/money.mjs b/src/money.mjs\nindex d7a94d5..f2d13ff 100644\n--- a/src/money.mjs\n+++ b/src/money.mjs\n@@ -1,6 +1,6 @@\n export function toCents(amount) {\n   // Converts a decimal amount into integer cents.\n-  return Math.floor(amount * 100);\n+  return Math.round(amount * 100);\n }\n \n export function formatCents(cents) {\n",
+      "evidence": {},
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 130167,
+        "cache_write": 0,
+        "cache_read": 111616,
+        "output": 1767
+      },
+      "weighted_units_raw": 150163.6,
+      "codex_credits_raw": null,
+      "codex_credits": 0.201573,
+      "codex_credit_breakdown": {
+        "input": 0.092755,
+        "cache_read": 0.055808,
+        "output": 0.05301,
+        "total": 0.201573,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.092755,
+            "cache_read": 0.055808,
+            "output": 0.05301,
+            "total": 0.201573
+          }
+        }
+      }
+    },
+    {
+      "host": "codex",
+      "scenario": "H",
+      "arm": "forge",
+      "run": 1,
+      "commit": "22562832d9bfeb81d7e796fef1f47ce09ce00ff0",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 54340,
+      "model_elapsed_ms": 54197,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 19686,
+        "cache_write": 0,
+        "cache_read": 128768,
+        "output": 2186
+      },
+      "weighted_units": 45678.8,
+      "calls": 1,
+      "session_id": "019fc7a9-2929-78d3-852c-4e37d166f570",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ formats whole and partial cents (0.6144ms)\n✔ rounds half a cent up (0.1244ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 82.4939\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Updated [src/money.mjs](C:\\Users\\danie\\AppData\\Local\\Temp\\forge-bench-H-codex-forge-1-BLkAcG\\src\\money.mjs:3) to use `Math.round`.\n\n- `node --test`: passed, 2/2.\n- `npm run lint`: failed—the configured linter command does not exist. `npm.cmd` was used because PowerShell blocked `npm.ps1`.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/money.mjs b/src/money.mjs\nindex d7a94d5..f2d13ff 100644\n--- a/src/money.mjs\n+++ b/src/money.mjs\n@@ -1,6 +1,6 @@\n export function toCents(amount) {\n   // Converts a decimal amount into integer cents.\n-  return Math.floor(amount * 100);\n+  return Math.round(amount * 100);\n }\n \n export function formatCents(cents) {\n",
+      "evidence": {
+        "reviewer_only_failures": 1,
+        "review_loops": 0,
+        "host_evidence_decision": false
+      },
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 148454,
+        "cache_write": 0,
+        "cache_read": 128768,
+        "output": 2186
+      },
+      "weighted_units_raw": 172260.8,
+      "codex_credits_raw": null,
+      "codex_credits": 0.228394,
+      "codex_credit_breakdown": {
+        "input": 0.09843,
+        "cache_read": 0.064384,
+        "output": 0.06558,
+        "total": 0.228394,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.09843,
+            "cache_read": 0.064384,
+            "output": 0.06558,
+            "total": 0.228394
+          }
+        }
+      }
+    }
+  ],
+  "judgments": [],
+  "summary": [
+    {
+      "host": "codex",
+      "scenario": "H",
+      "arm": "solo",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 40314.6,
+      "cost_range": [
+        40314.6,
+        40314.6
+      ],
+      "elapsed_ms_median": 60680,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.4616370878018719,
+      "codex_credits_median": 0.201573
+    },
+    {
+      "host": "codex",
+      "scenario": "H",
+      "arm": "forge",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 45678.8,
+      "cost_range": [
+        45678.8,
+        45678.8
+      ],
+      "elapsed_ms_median": 54340,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.46449415991515824,
+      "codex_credits_median": 0.228394
+    }
+  ],
+  "comparisons": [
+    {
+      "host": "codex",
+      "scenario": "H",
+      "valid": true,
+      "cost_ratio": 1.1330584949373181,
+      "quality_ratio": 1,
+      "cache_ratio_delta": 0.002857072113286341,
+      "elapsed_ratio": 0.8955174686882004,
+      "subscription_ratio": null,
+      "credit_ratio": null,
+      "runs": {
+        "solo": 1,
+        "forge": 1
+      }
+    }
+  ],
+  "gates": [
+    {
+      "host": "codex",
+      "scenario": "H",
+      "passed": false,
+      "reasons": [
+        "insufficient-runs",
+        "reviewer-gate"
+      ]
+    }
+  ],
+  "metrics_revision": 2
+}

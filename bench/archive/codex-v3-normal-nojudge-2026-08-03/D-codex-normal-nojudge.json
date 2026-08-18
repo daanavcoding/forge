@@ -1,0 +1,258 @@
+{
+  "case": "D",
+  "host": "codex",
+  "judge_enabled": false,
+  "billing_mode": "subscription-only",
+  "extra_credits_allowed": false,
+  "direct_api_credentials_allowed": false,
+  "rows": [
+    {
+      "host": "codex",
+      "scenario": "D",
+      "arm": "solo",
+      "run": 1,
+      "commit": "e90100f44bc35ff09859b1d2ac5af6795fa26e8a",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 54855,
+      "model_elapsed_ms": 54716,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 30877,
+        "cache_write": 0,
+        "cache_read": 106752,
+        "output": 1808
+      },
+      "weighted_units": 52400.2,
+      "calls": 1,
+      "session_id": "019fc79d-90ae-7ce0-b0df-dc579d93136e",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ converts a plain euro amount (0.6367ms)\n✔ rejects an unknown currency (0.6186ms)\n✔ does not lose a cent when converting (0.13ms)\n✔ rounds a half cent up (0.094ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 80.5609\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Fixed the rounding bug in [src/money.mjs](C:/Users/danie/AppData/Local/Temp/forge-bench-D-codex-solo-1-YsBTYn/src/money.mjs:3): `Math.floor` now uses `Math.round` so fractional cents round correctly.\n\n`node --test` passes all 4 tests.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/money.mjs b/src/money.mjs\nindex d7a94d5..f2d13ff 100644\n--- a/src/money.mjs\n+++ b/src/money.mjs\n@@ -1,6 +1,6 @@\n export function toCents(amount) {\n   // Converts a decimal amount into integer cents.\n-  return Math.floor(amount * 100);\n+  return Math.round(amount * 100);\n }\n \n export function formatCents(cents) {\n",
+      "evidence": {},
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 137629,
+        "cache_write": 0,
+        "cache_read": 106752,
+        "output": 1808
+      },
+      "weighted_units_raw": 157344.2,
+      "codex_credits_raw": null,
+      "codex_credits": 0.262001,
+      "codex_credit_breakdown": {
+        "input": 0.154385,
+        "cache_read": 0.053376,
+        "output": 0.05424,
+        "total": 0.262001,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.154385,
+            "cache_read": 0.053376,
+            "output": 0.05424,
+            "total": 0.262001
+          }
+        }
+      }
+    },
+    {
+      "host": "codex",
+      "scenario": "D",
+      "arm": "forge",
+      "run": 1,
+      "commit": "e90100f44bc35ff09859b1d2ac5af6795fa26e8a",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 41691,
+      "model_elapsed_ms": 41518,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 19427,
+        "cache_write": 0,
+        "cache_read": 113664,
+        "output": 1436
+      },
+      "weighted_units": 39409.4,
+      "calls": 1,
+      "session_id": "019fc79e-6f1c-74b0-95bc-23e2e0c2dd46",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ converts a plain euro amount (1.0016ms)\n✔ rejects an unknown currency (0.8017ms)\n✔ does not lose a cent when converting (0.25ms)\n✔ rounds a half cent up (0.1875ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 100.3578\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Fixed the cent-loss bug in [src/money.mjs](C:/Users/danie/AppData/Local/Temp/forge-bench-D-codex-forge-1-ocfwKz/src/money.mjs:3) by rounding to the nearest cent instead of flooring.\n\n`node --test` now passes all 4 tests.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/money.mjs b/src/money.mjs\nindex d7a94d5..f2d13ff 100644\n--- a/src/money.mjs\n+++ b/src/money.mjs\n@@ -1,6 +1,6 @@\n export function toCents(amount) {\n   // Converts a decimal amount into integer cents.\n-  return Math.floor(amount * 100);\n+  return Math.round(amount * 100);\n }\n \n export function formatCents(cents) {\n",
+      "evidence": {},
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 133091,
+        "cache_write": 0,
+        "cache_read": 113664,
+        "output": 1436
+      },
+      "weighted_units_raw": 151637.4,
+      "codex_credits_raw": null,
+      "codex_credits": 0.197047,
+      "codex_credit_breakdown": {
+        "input": 0.097135,
+        "cache_read": 0.056832,
+        "output": 0.04308,
+        "total": 0.197047,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.097135,
+            "cache_read": 0.056832,
+            "output": 0.04308,
+            "total": 0.197047
+          }
+        }
+      }
+    }
+  ],
+  "judgments": [],
+  "summary": [
+    {
+      "host": "codex",
+      "scenario": "D",
+      "arm": "solo",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 52400.2,
+      "cost_range": [
+        52400.2,
+        52400.2
+      ],
+      "elapsed_ms_median": 54855,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.4368261035023181,
+      "codex_credits_median": 0.262001
+    },
+    {
+      "host": "codex",
+      "scenario": "D",
+      "arm": "forge",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 39409.4,
+      "cost_range": [
+        39409.4,
+        39409.4
+      ],
+      "elapsed_ms_median": 41691,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.46063504285627443,
+      "codex_credits_median": 0.197047
+    }
+  ],
+  "comparisons": [
+    {
+      "host": "codex",
+      "scenario": "D",
+      "valid": true,
+      "cost_ratio": 0.7520849157064287,
+      "quality_ratio": 1,
+      "cache_ratio_delta": 0.023808939353956338,
+      "elapsed_ratio": 0.7600218758545255,
+      "subscription_ratio": null,
+      "credit_ratio": null,
+      "runs": {
+        "solo": 1,
+        "forge": 1
+      }
+    }
+  ],
+  "gates": [
+    {
+      "host": "codex",
+      "scenario": "D",
+      "passed": false,
+      "reasons": [
+        "insufficient-runs",
+        "cost-gate"
+      ]
+    }
+  ],
+  "metrics_revision": 2
+}

@@ -1,0 +1,26 @@
+{
+  "name": "forge",
+  "version": "1.0.0",
+  "description": "Run the verified Forge workflow in one host session, plus a public skill for context-aware verified commits.",
+  "author": {
+    "name": "daanavcoding"
+  },
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Forge",
+    "shortDescription": "Verified coding workflow without nested model loops",
+    "longDescription": "Forge keeps one coding task in one ChatGPT or Codex session. It plans, implements, verifies locally, performs one final review, and produces one terminal summary. Failed runs resume from that summary without model judges or nested host sessions.",
+    "developerName": "daanavcoding",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Interactive"
+    ],
+    "defaultPrompt": [
+      "Use Forge to plan, implement, and verify this coding task.",
+      "Use Forge Commit to refresh the correct project context and commit the verified changes.",
+      "Use Forge resume to continue the latest failed run from its summary."
+    ],
+    "brandColor": "#D97706"
+  }
+}

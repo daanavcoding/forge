@@ -1,0 +1,29 @@
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/hook.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\hook.mjs\"",
+            "statusMessage": "Loading Forge"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${PLUGIN_ROOT}/scripts/session-end.mjs\"",
+            "commandWindows": "node \"${PLUGIN_ROOT}\\scripts\\session-end.mjs\"",
+            "statusMessage": "Saving Forge telemetry"
+          }
+        ]
+      }
+    ]
+  }
+}

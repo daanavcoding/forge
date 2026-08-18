@@ -1,0 +1,259 @@
+{
+  "case": "F",
+  "host": "codex",
+  "judge_enabled": false,
+  "billing_mode": "subscription-only",
+  "extra_credits_allowed": false,
+  "direct_api_credentials_allowed": false,
+  "rows": [
+    {
+      "host": "codex",
+      "scenario": "F",
+      "arm": "solo",
+      "run": 1,
+      "commit": "b40eba4a07b08dcc67fdc394d6abcaca8b2b806e",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 105188,
+      "model_elapsed_ms": 105034,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 21580,
+        "cache_write": 0,
+        "cache_read": 121856,
+        "output": 4825
+      },
+      "weighted_units": 62715.6,
+      "calls": 1,
+      "session_id": "019fc7a2-41b7-7a10-98d5-170fa3482828",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ stores and reads values (1.1857ms)\n✔ evicts the oldest entry past capacity (0.1878ms)\n✔ an expired entry is not returned and does not count towards size (0.1474ms)\n✔ expired entries never consume capacity nor count as evictions (0.1798ms)\n✔ ttlMs null or absent never expires (0.7831ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 87.5196\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Implemented cache expiry in [src/cache.mjs](C:/Users/danie/AppData/Local/Temp/forge-bench-F-codex-solo-1-oIGgby/src/cache.mjs).\n\n- Supports optional `ttlMs`\n- Removes expired entries on read, size checks, and writes\n- Expired entries don’t trigger eviction stats\n- Added injectable clock support\n\nAll 5 tests pass.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/cache.mjs b/src/cache.mjs\nindex 84adcc4..d974513 100644\n--- a/src/cache.mjs\n+++ b/src/cache.mjs\n@@ -1,10 +1,25 @@\n-export function createCache({ maxEntries = 100 } = {}) {\n+export function createCache({ maxEntries = 100, now = () => Date.now() } = {}) {\n   const entries = new Map();\n   const stats = { evictions: 0 };\n+\n+  function isExpired(entry) {\n+    return entry.expiresAt !== undefined && entry.expiresAt <= now();\n+  }\n+\n+  function pruneExpired() {\n+    for (const [key, entry] of entries) {\n+      if (isExpired(entry)) entries.delete(key);\n+    }\n+  }\n+\n   return {\n-    set(key, value) {\n+    set(key, value, { ttlMs = null } = {}) {\n+      pruneExpired();\n       entries.delete(key);\n-      entries.set(key, value);\n+      const currentTime = ttlMs == null ? undefined : now();\n+      const expiresAt = currentTime === undefined ? undefined : currentTime + ttlMs;\n+      if (expiresAt !== undefined && expiresAt <= currentTime) return;\n+      entries.set(key, { value, expiresAt });\n       while (entries.size > maxEntries) {\n         const oldest = entries.keys().next().value;\n         entries.delete(oldest);\n@@ -12,9 +27,16 @@ export function createCache({ maxEntries = 100 } = {}) {\n       }\n     },\n     get(key) {\n-      return entries.get(key);\n+      const entry = entries.get(key);\n+      if (!entry) return undefined;\n+      if (isExpired(entry)) {\n+        entries.delete(key);\n+        return undefined;\n+      }\n+      return entry.value;\n     },\n     get size() {\n+      pruneExpired();\n       return entries.size;\n     },\n     stats() {\n",
+      "evidence": {},
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 143436,
+        "cache_write": 0,
+        "cache_read": 121856,
+        "output": 4825
+      },
+      "weighted_units_raw": 179746.6,
+      "codex_credits_raw": null,
+      "codex_credits": 0.313578,
+      "codex_credit_breakdown": {
+        "input": 0.1079,
+        "cache_read": 0.060928,
+        "output": 0.14475,
+        "total": 0.313578,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.1079,
+            "cache_read": 0.060928,
+            "output": 0.14475,
+            "total": 0.313578
+          }
+        }
+      }
+    },
+    {
+      "host": "codex",
+      "scenario": "F",
+      "arm": "forge",
+      "run": 1,
+      "commit": "b40eba4a07b08dcc67fdc394d6abcaca8b2b806e",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 86869,
+      "model_elapsed_ms": 86722,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 24438,
+        "cache_write": 0,
+        "cache_read": 132864,
+        "output": 3770
+      },
+      "weighted_units": 60344.4,
+      "calls": 1,
+      "session_id": "019fc7a3-e39a-78e2-a141-8e2f574e1c65",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ stores and reads values (0.715ms)\n✔ evicts the oldest entry past capacity (0.1448ms)\n✔ an expired entry is not returned and does not count towards size (0.1171ms)\n✔ expired entries never consume capacity nor count as evictions (0.1356ms)\n✔ ttlMs null or absent never expires (0.841ms)\nℹ tests 5\nℹ suites 0\nℹ pass 5\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 82.8306\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Implemented TTL-based cache expiration in [src/cache.mjs](C:\\Users\\danie\\AppData\\Local\\Temp\\forge-bench-F-codex-forge-1-H8pRD9\\src\\cache.mjs:1).\n\nExpired entries are removed on reads, size checks, and before capacity eviction; they no longer count as evictions. All 5 tests pass.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/cache.mjs b/src/cache.mjs\nindex 84adcc4..46246e0 100644\n--- a/src/cache.mjs\n+++ b/src/cache.mjs\n@@ -1,10 +1,31 @@\n-export function createCache({ maxEntries = 100 } = {}) {\n+export function createCache({ maxEntries = 100, now = Date.now } = {}) {\n   const entries = new Map();\n   const stats = { evictions: 0 };\n+\n+  function isExpired(entry, timestamp) {\n+    return entry.expiresAt !== null && entry.expiresAt <= timestamp;\n+  }\n+\n+  function removeExpired(timestamp = now()) {\n+    for (const [key, entry] of entries) {\n+      if (isExpired(entry, timestamp)) {\n+        entries.delete(key);\n+      }\n+    }\n+  }\n+\n   return {\n-    set(key, value) {\n+    set(key, value, { ttlMs } = {}) {\n+      const timestamp = now();\n+      removeExpired(timestamp);\n       entries.delete(key);\n-      entries.set(key, value);\n+\n+      const expiresAt = ttlMs == null ? null : timestamp + ttlMs;\n+      if (expiresAt !== null && expiresAt <= timestamp) {\n+        return;\n+      }\n+\n+      entries.set(key, { value, expiresAt });\n       while (entries.size > maxEntries) {\n         const oldest = entries.keys().next().value;\n         entries.delete(oldest);\n@@ -12,9 +33,18 @@ export function createCache({ maxEntries = 100 } = {}) {\n       }\n     },\n     get(key) {\n-      return entries.get(key);\n+      const entry = entries.get(key);\n+      if (entry === undefined) {\n+        return undefined;\n+      }\n+      if (isExpired(entry, now())) {\n+        entries.delete(key);\n+        return undefined;\n+      }\n+      return entry.value;\n     },\n     get size() {\n+      removeExpired();\n       return entries.size;\n     },\n     stats() {\n",
+      "evidence": {
+        "deviations": 0
+      },
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 157302,
+        "cache_write": 0,
+        "cache_read": 132864,
+        "output": 3770
+      },
+      "weighted_units_raw": 189438.4,
+      "codex_credits_raw": null,
+      "codex_credits": 0.301722,
+      "codex_credit_breakdown": {
+        "input": 0.12219,
+        "cache_read": 0.066432,
+        "output": 0.1131,
+        "total": 0.30172200000000005,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.12219,
+            "cache_read": 0.066432,
+            "output": 0.1131,
+            "total": 0.30172200000000005
+          }
+        }
+      }
+    }
+  ],
+  "judgments": [],
+  "summary": [
+    {
+      "host": "codex",
+      "scenario": "F",
+      "arm": "solo",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 62715.6,
+      "cost_range": [
+        62715.6,
+        62715.6
+      ],
+      "elapsed_ms_median": 105188,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.4593278349893702,
+      "codex_credits_median": 0.313578
+    },
+    {
+      "host": "codex",
+      "scenario": "F",
+      "arm": "forge",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 60344.4,
+      "cost_range": [
+        60344.4,
+        60344.4
+      ],
+      "elapsed_ms_median": 86869,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.45788962180269227,
+      "codex_credits_median": 0.301722
+    }
+  ],
+  "comparisons": [
+    {
+      "host": "codex",
+      "scenario": "F",
+      "valid": true,
+      "cost_ratio": 0.9621912251497236,
+      "quality_ratio": 1,
+      "cache_ratio_delta": -0.0014382131866779169,
+      "elapsed_ratio": 0.8258451534395559,
+      "subscription_ratio": null,
+      "credit_ratio": null,
+      "runs": {
+        "solo": 1,
+        "forge": 1
+      }
+    }
+  ],
+  "gates": [
+    {
+      "host": "codex",
+      "scenario": "F",
+      "passed": false,
+      "reasons": [
+        "insufficient-runs"
+      ]
+    }
+  ],
+  "metrics_revision": 2
+}

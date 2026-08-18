@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "forge",
+  "version": "1.0.0",
+  "description": "Run the verified Forge workflow with review, resumable evidence, and a public context-aware commit skill.",
+  "author": {
+    "name": "daanavcoding"
+  },
+  "skills": "./skills/",
+  "hooks": "./claude/hooks.json"
+}

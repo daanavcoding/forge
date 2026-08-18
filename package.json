@@ -1,0 +1,22 @@
+{
+  "name": "forge-agent-plugin",
+  "version": "1.0.0",
+  "description": "Portable Agent Plugin with a verified coding workflow",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "test": "node plugins/forge/scripts/selfcheck.mjs && node bench/v5.mjs",
+    "check": "node --check plugins/forge/scripts/claude-hook.mjs && node --check plugins/forge/scripts/finalize.mjs && node --check plugins/forge/scripts/graphify.mjs && node --check plugins/forge/scripts/hook.mjs && node --check plugins/forge/scripts/host-manager.mjs && node --check plugins/forge/scripts/install-client.mjs && node --check plugins/forge/scripts/managed-dispatcher.mjs && node --check plugins/forge/scripts/run-state.mjs && node --check plugins/forge/scripts/session-end.mjs && node --check plugins/forge/scripts/telemetry.mjs && node --check plugins/forge/scripts/selfcheck.mjs && node --check plugins/forge/worker-skills/catalog.mjs && node --check bench/v5.mjs && node --check bench/merge-v5.mjs",
+    "plugin:check": "node plugins/forge/scripts/selfcheck.mjs",
+    "plugin:setup": "node plugins/forge/scripts/host-manager.mjs install",
+    "plugin:doctor": "node plugins/forge/scripts/host-manager.mjs doctor",
+    "plugin:install-client": "node plugins/forge/scripts/install-client.mjs",
+    "bench": "node bench/v5.mjs",
+    "bench:baseline": "node bench/v5.mjs --baseline --confirm-subscription-usage",
+    "bench:live": "node bench/v5.mjs --arm both --runs 5 --judge --confirm-subscription-usage",
+    "codex:install": "npm install --global --include=optional @openai/codex"
+  }
+}

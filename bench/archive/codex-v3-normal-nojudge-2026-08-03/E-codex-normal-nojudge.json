@@ -1,0 +1,268 @@
+{
+  "case": "E",
+  "host": "codex",
+  "judge_enabled": false,
+  "billing_mode": "subscription-only",
+  "extra_credits_allowed": false,
+  "direct_api_credentials_allowed": false,
+  "rows": [
+    {
+      "host": "codex",
+      "scenario": "E",
+      "arm": "solo",
+      "run": 1,
+      "commit": "6deb6f02ab42b7f177b3bb47514700a5b4fd5104",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 96792,
+      "model_elapsed_ms": 96570,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 21897,
+        "cache_write": 0,
+        "cache_read": 119808,
+        "output": 4260
+      },
+      "weighted_units": 59437.8,
+      "calls": 1,
+      "session_id": "019fc79f-43f9-7690-9089-3900ac9fad87",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ stores and reads values (0.8063ms)\n✔ evicts the oldest entry past capacity (0.1573ms)\n✔ an entry past its ttl is not returned (0.1442ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 83.1031\n"
+      },
+      "hidden_verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "hidden checks passed\n"
+      },
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Implemented optional per-entry TTL support in [src/cache.mjs](C:/Users/danie/AppData/Local/Temp/forge-bench-E-codex-solo-1-pcD1aq/src/cache.mjs).\n\n- Added injectable `now()` clock.\n- Added `set(key, value, { ttlMs })`.\n- Expired entries are removed before reads, sizing, and capacity checks.\n- Expiration never counts as eviction.\n- `null`/absent TTL means no expiration.\n- `node --test` passes.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/cache.mjs b/src/cache.mjs\nindex 84adcc4..5545778 100644\n--- a/src/cache.mjs\n+++ b/src/cache.mjs\n@@ -1,10 +1,23 @@\n-export function createCache({ maxEntries = 100 } = {}) {\n+export function createCache({ maxEntries = 100, now = Date.now } = {}) {\n   const entries = new Map();\n   const stats = { evictions: 0 };\n+\n+  function removeExpired(currentTime) {\n+    for (const [key, entry] of entries) {\n+      if (entry.expiresAt !== undefined && entry.expiresAt <= currentTime) {\n+        entries.delete(key);\n+      }\n+    }\n+  }\n+\n   return {\n-    set(key, value) {\n+    set(key, value, { ttlMs } = {}) {\n+      const currentTime = now();\n+      removeExpired(currentTime);\n       entries.delete(key);\n-      entries.set(key, value);\n+      const expiresAt = ttlMs == null ? undefined : currentTime + ttlMs;\n+      if (expiresAt !== undefined && expiresAt <= currentTime) return;\n+      entries.set(key, { value, expiresAt });\n       while (entries.size > maxEntries) {\n         const oldest = entries.keys().next().value;\n         entries.delete(oldest);\n@@ -12,9 +25,11 @@ export function createCache({ maxEntries = 100 } = {}) {\n       }\n     },\n     get(key) {\n-      return entries.get(key);\n+      removeExpired(now());\n+      return entries.get(key)?.value;\n     },\n     get size() {\n+      removeExpired(now());\n       return entries.size;\n     },\n     stats() {\n",
+      "evidence": {},
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 141705,
+        "cache_write": 0,
+        "cache_read": 119808,
+        "output": 4260
+      },
+      "weighted_units_raw": 174985.8,
+      "codex_credits_raw": null,
+      "codex_credits": 0.297189,
+      "codex_credit_breakdown": {
+        "input": 0.109485,
+        "cache_read": 0.059904,
+        "output": 0.1278,
+        "total": 0.29718900000000004,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.109485,
+            "cache_read": 0.059904,
+            "output": 0.1278,
+            "total": 0.29718900000000004
+          }
+        }
+      }
+    },
+    {
+      "host": "codex",
+      "scenario": "E",
+      "arm": "forge",
+      "run": 1,
+      "commit": "6deb6f02ab42b7f177b3bb47514700a5b4fd5104",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 84496,
+      "model_elapsed_ms": 84290,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 20147,
+        "cache_write": 0,
+        "cache_read": 100608,
+        "output": 3523
+      },
+      "weighted_units": 51345.8,
+      "calls": 1,
+      "session_id": "019fc7a0-c5a7-7900-93aa-8aca17b3016b",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ stores and reads values (0.6531ms)\n✔ evicts the oldest entry past capacity (0.1297ms)\n✔ an entry past its ttl is not returned (0.123ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 77.2293\n"
+      },
+      "hidden_verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "hidden checks passed\n"
+      },
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Implemented optional per-entry TTL support in [src/cache.mjs](C:\\Users\\danie\\AppData\\Local\\Temp\\forge-bench-E-codex-forge-1-7SEK3a\\src\\cache.mjs).\n\n- Added `now()` clock option.\n- Added `{ ttlMs }` support.\n- Expired entries are removed before reads, sizing, and capacity checks.\n- Expiration never increments eviction stats.\n- `null` or absent TTL means no expiration.\n\n`node --test` passes: 3/3.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/cache.mjs b/src/cache.mjs\nindex 84adcc4..4f5e4a1 100644\n--- a/src/cache.mjs\n+++ b/src/cache.mjs\n@@ -1,10 +1,24 @@\n-export function createCache({ maxEntries = 100 } = {}) {\n+export function createCache({ maxEntries = 100, now = Date.now } = {}) {\n   const entries = new Map();\n   const stats = { evictions: 0 };\n+\n+  function removeExpired(currentTime = now()) {\n+    for (const [key, entry] of entries) {\n+      if (entry.expiresAt !== null && entry.expiresAt <= currentTime) {\n+        entries.delete(key);\n+      }\n+    }\n+  }\n+\n   return {\n-    set(key, value) {\n+    set(key, value, { ttlMs } = {}) {\n+      const currentTime = now();\n+      removeExpired(currentTime);\n       entries.delete(key);\n-      entries.set(key, value);\n+      entries.set(key, {\n+        value,\n+        expiresAt: ttlMs == null ? null : currentTime + ttlMs,\n+      });\n       while (entries.size > maxEntries) {\n         const oldest = entries.keys().next().value;\n         entries.delete(oldest);\n@@ -12,9 +26,11 @@ export function createCache({ maxEntries = 100 } = {}) {\n       }\n     },\n     get(key) {\n-      return entries.get(key);\n+      removeExpired();\n+      return entries.get(key)?.value;\n     },\n     get size() {\n+      removeExpired();\n       return entries.size;\n     },\n     stats() {\n",
+      "evidence": {
+        "checks_green": true,
+        "detected_and_fixed": true
+      },
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 120755,
+        "cache_write": 0,
+        "cache_read": 100608,
+        "output": 3523
+      },
+      "weighted_units_raw": 148430.8,
+      "codex_credits_raw": null,
+      "codex_credits": 0.256729,
+      "codex_credit_breakdown": {
+        "input": 0.100735,
+        "cache_read": 0.050304,
+        "output": 0.10569,
+        "total": 0.256729,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.100735,
+            "cache_read": 0.050304,
+            "output": 0.10569,
+            "total": 0.256729
+          }
+        }
+      }
+    }
+  ],
+  "judgments": [],
+  "summary": [
+    {
+      "host": "codex",
+      "scenario": "E",
+      "arm": "solo",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 59437.8,
+      "cost_range": [
+        59437.8,
+        59437.8
+      ],
+      "elapsed_ms_median": 96792,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.4581340124582717,
+      "codex_credits_median": 0.297189
+    },
+    {
+      "host": "codex",
+      "scenario": "E",
+      "arm": "forge",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 51345.8,
+      "cost_range": [
+        51345.8,
+        51345.8
+      ],
+      "elapsed_ms_median": 84496,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.454493298338024,
+      "codex_credits_median": 0.256729
+    }
+  ],
+  "comparisons": [
+    {
+      "host": "codex",
+      "scenario": "E",
+      "valid": true,
+      "cost_ratio": 0.8638576797929937,
+      "quality_ratio": 1,
+      "cache_ratio_delta": -0.00364071412024769,
+      "elapsed_ratio": 0.8729647078270931,
+      "subscription_ratio": null,
+      "credit_ratio": null,
+      "runs": {
+        "solo": 1,
+        "forge": 1
+      }
+    }
+  ],
+  "gates": [
+    {
+      "host": "codex",
+      "scenario": "E",
+      "passed": false,
+      "reasons": [
+        "insufficient-runs"
+      ]
+    }
+  ],
+  "metrics_revision": 2
+}

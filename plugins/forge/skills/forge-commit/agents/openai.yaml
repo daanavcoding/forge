@@ -1,0 +1,4 @@
+interface:
+  display_name: "Forge Commit"
+  short_description: "Refresh context, review README, and create a verified commit"
+  default_prompt: "Use Forge Commit when the user asks to commit: update the correct host context, writing authored or rewritten prose in English only by default unless the user requests another language, review README.md and update stale public documentation using the same language rule, then verify and commit only the requested changes."

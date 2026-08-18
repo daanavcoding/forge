@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "measured_at": "2026-08-03T21:45:14.507Z",
+  "codex_cli": "codex-cli 0.146.0",
+  "forge_plugin": {
+    "installed_enabled": true,
+    "version": "4.0.0"
+  },
+  "hooks_feature": {
+    "stable_enabled": true,
+    "repo_configured": true
+  },
+  "pretooluse_contract": {
+    "decision": "deny",
+    "reason": "Graphify already supplied discovery scope. Use `graphify query \"rg policy src\" --budget 4000 --graph \"E:\\\\Coding\\\\Coding-agent\\\\.forge\\\\graph.json\"` instead of this search; the exact replacement is recorded for telemetry.",
+    "local_shape_valid": true
+  },
+  "host_invocation": {
+    "status": "not-run",
+    "reason": "This check does not start a model session; it records the installed host and validates the hook response locally."
+  },
+  "sources": [
+    "https://learn.chatgpt.com/docs/hooks.md",
+    "https://developers.openai.com/plugins/build/plugins#bundled-mcp-servers-and-lifecycle-hooks"
+  ]
+}

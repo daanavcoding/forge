@@ -1,0 +1,259 @@
+{
+  "case": "C",
+  "host": "codex",
+  "judge_enabled": false,
+  "billing_mode": "subscription-only",
+  "extra_credits_allowed": false,
+  "direct_api_credentials_allowed": false,
+  "rows": [
+    {
+      "host": "codex",
+      "scenario": "C",
+      "arm": "solo",
+      "run": 1,
+      "commit": "c4e607e670e52b161673c29bc91169ebdf079407",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 215075,
+      "model_elapsed_ms": 214895,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 30421,
+        "cache_write": 0,
+        "cache_read": 301824,
+        "output": 8581
+      },
+      "weighted_units": 112089.4,
+      "calls": 1,
+      "session_id": "019fc797-40d7-7f00-b785-6f3582a78ae1",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ no legacyLog identifier remains anywhere in src (4.4235ms)\n✔ every module still works through the renamed log (27.0968ms)\n✔ log module exports log and not legacyLog (0.1667ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 114.3162\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Renamed `legacyLog` to `log` in `src/log.mjs` and all 40 modules under `src/`. Behavior is unchanged.\n\n`node --test`: 3 passed, 0 failed.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/log.mjs b/src/log.mjs\nindex 9b062df..f3e634d 100644\n--- a/src/log.mjs\n+++ b/src/log.mjs\n@@ -1,6 +1,6 @@\n const lines = [];\n \n-export function legacyLog(message) {\n+export function log(message) {\n   lines.push(String(message));\n   return lines.length;\n }\ndiff --git a/src/mod-01.mjs b/src/mod-01.mjs\nindex c1e12cd..40a7a6b 100644\n--- a/src/mod-01.mjs\n+++ b/src/mod-01.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task01(value) {\n-  legacyLog(`task01:${value}`);\n+  log(`task01:${value}`);\n   return value * 1;\n }\ndiff --git a/src/mod-02.mjs b/src/mod-02.mjs\nindex 42c0ff9..379173b 100644\n--- a/src/mod-02.mjs\n+++ b/src/mod-02.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task02(value) {\n-  legacyLog(`task02:${value}`);\n+  log(`task02:${value}`);\n   return value * 2;\n }\ndiff --git a/src/mod-03.mjs b/src/mod-03.mjs\nindex 915de56..4fc8f58 100644\n--- a/src/mod-03.mjs\n+++ b/src/mod-03.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task03(value) {\n-  legacyLog(`task03:${value}`);\n+  log(`task03:${value}`);\n   return value * 3;\n }\ndiff --git a/src/mod-04.mjs b/src/mod-04.mjs\nindex 0a046a6..5067834 100644\n--- a/src/mod-04.mjs\n+++ b/src/mod-04.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task04(value) {\n-  legacyLog(`task04:${value}`);\n+  log(`task04:${value}`);\n   return value * 4;\n }\ndiff --git a/src/mod-05.mjs b/src/mod-05.mjs\nindex a8c554e..5068c04 100644\n--- a/src/mod-05.mjs\n+++ b/src/mod-05.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task05(value) {\n-  legacyLog(`task05:${value}`);\n+  log(`task05:${value}`);\n   return value * 5;\n }\ndiff --git a/src/mod-06.mjs b/src/mod-06.mjs\nindex 9834ab7..227ae42 100644\n--- a/src/mod-06.mjs\n+++ b/src/mod-06.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task06(value) {\n-  legacyLog(`task06:${value}`);\n+  log(`task06:${value}`);\n   return value * 6;\n }\ndiff --git a/src/mod-07.mjs b/src/mod-07.mjs\nindex 6cf95bd..172a9bc 100644\n--- a/src/mod-07.mjs\n+++ b/src/mod-07.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task07(value) {\n-  legacyLog(`task07:${value}`);\n+  log(`task07:${value}`);\n   return value * 7;\n }\ndiff --git a/src/mod-08.mjs b/src/mod-08.mjs\nindex 69de769..5b8e2dc 100644\n--- a/src/mod-08.mjs\n+++ b/src/mod-08.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task08(value) {\n-  legacyLog(`task08:${value}`);\n+  log(`task08:${value}`);\n   return value * 8;\n }\ndiff --git a/src/mod-09.mjs b/src/mod-09.mjs\nindex 9880b10..d5fc0a4 100644\n--- a/src/mod-09.mjs\n+++ b/src/mod-09.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task09(value) {\n-  legacyLog(`task09:${value}`);\n+  log(`task09:${value}`);\n   return value * 9;\n }\ndiff --git a/src/mod-10.mjs b/src/mod-10.mjs\nindex 8d28b2e..dbc3729 100644\n--- a/src/mod-10.mjs\n+++ b/src/mod-10.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task10(value) {\n-  legacyLog(`task10:${value}`);\n+  log(`task10:${value}`);\n   return value * 10;\n }\ndiff --git a/src/mod-11.mjs b/src/mod-11.mjs\nindex 7d7d2ca..fc7e847 100644\n--- a/src/mod-11.mjs\n+++ b/src/mod-11.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task11(value) {\n-  legacyLog(`task11:${value}`);\n+  log(`task11:${value}`);\n   return value * 11;\n }\ndiff --git a/src/mod-12.mjs b/src/mod-12.mjs\nindex 1a2117c..f478b77 100644\n--- a/src/mod-12.mjs\n+++ b/src/mod-12.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task12(value) {\n-  legacyLog(`task12:${value}`);\n+  log(`task12:${value}`);\n   return value * 12;\n }\ndiff --git a/src/mod-13.mjs b/src/mod-13.mjs\nindex 2e9178d..114462f 100644\n--- a/src/mod-13.mjs\n+++ b/src/mod-13.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task13(value) {\n-  legacyLog(`task13:${value}`);\n+  log(`task13:${value}`);\n   return value * 13;\n }\ndiff --git a/src/mod-14.mjs b/src/mod-14.mjs\nindex b63be11..1e4b296 100644\n--- a/src/mod-14.mjs\n+++ b/src/mod-14.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task14(value) {\n-  legacyLog(`task14:${value}`);\n+  log(`task14:${value}`);\n   return value * 14;\n }\ndiff --git a/src/mod-15.mjs b/src/mod-15.mjs\nindex 2ee6381..c62e9cd 100644\n--- a/src/mod-15.mjs\n+++ b/src/mod-15.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task15(value) {\n-  legacyLog(`task15:${value}`);\n+  log(`task15:${value}`);\n   return value * 15;\n }\ndiff --git a/src/mod-16.mjs b/src/mod-16.mjs\nindex 18a5843..0809d78 100644\n--- a/src/mod-16.mjs\n+++ b/src/mod-16.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task16(value) {\n-  legacyLog(`task16:${value}`);\n+  log(`task16:${value}`);\n   return value * 16;\n }\ndiff --git a/src/mod-17.mjs b/src/mod-17.mjs\nindex 2b4ceaf..096431b 100644\n--- a/src/mod-17.mjs\n+++ b/src/mod-17.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task17(value) {\n-  legacyLog(`task17:${value}`);\n+  log(`task17:${value}`);\n   return value * 17;\n }\ndiff --git a/src/mod-18.mjs b/src/mod-18.mjs\nindex 60dbea6..5a206cc 100644\n--- a/src/mod-18.mjs\n+++ b/src/mod-18.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task18(value) {\n-  legacyLog(`task18:${value}`);\n+  log(`task18:${value}`);\n   return value * 18;\n }\ndiff --git a/src/mod-19.mjs b/src/mod-19.mjs\nindex d8d1fe1..7e72120 100644\n--- a/src/mod-19.mjs\n+++ b/src/mod-19.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task19(value) {\n-  legacyLog(`task19:${value}`);\n+  log(`task19:${value}`);\n   return value * 19;\n }\ndiff --git a/src/mod-20.mjs b/src/mod-20.mjs\nindex d24474e..de1e870 100644\n--- a/src/mod-20.mjs\n+++ b/src/mod-20.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task20(value) {\n-  legacyLog(`task20:${value}`);\n+  log(`task20:${value}`);\n   return value * 20;\n }\ndiff --git a/src/mod-21.mjs b/src/mod-21.mjs\nindex 7f10c48..41de0ff 100644\n--- a/src/mod-21.mjs\n+++ b/src/mod-21.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task21(value) {\n-  legacyLog(`task21:${value}`);\n+  log(`task21:${value}`);\n   return value * 21;\n }\ndiff --git a/src/mod-22.mjs b/src/mod-22.mjs\nindex 6f1c4a1..7a13647 100644\n--- a/src/mod-22.mjs\n+++ b/src/mod-22.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task22(value) {\n-  legacyLog(`task22:${value}`);\n+  log(`task22:${value}`);\n   return value * 22;\n }\ndiff --git a/src/mod-23.mjs b/src/mod-23.mjs\nindex 717052b..790ce34 100644\n--- a/src/mod-23.mjs\n+++ b/src/mod-23.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task23(value) {\n-  legacyLog(`task23:${value}`);\n+  log(`task23:${value}`);\n   return value * 23;\n }\ndiff --git a/src/mod-24.mjs b/src/mod-24.mjs\nindex 300df8b..ef4a9f9 100644\n--- a/src/mod-24.mjs\n+++ b/src/mod-24.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task24(value) {\n-  legacyLog(`task24:${value}`);\n+  log(`task24:${value}`);\n   return value * 24;\n }\ndiff --git a/src/mod-25.mjs b/src/mod-25.mjs\nindex 2cfe169..d1b06fb 100644\n--- a/src/mod-25.mjs\n+++ b/src/mod-25.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task25(value) {\n-  legacyLog(`task25:${value}`);\n+  log(`task25:${value}`);\n   return value * 25;\n }\ndiff --git a/src/mod-26.mjs b/src/mod-26.mjs\nindex a6e8e04..621402d 100644\n--- a/src/mod-26.mjs\n+++ b/src/mod-26.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task26(value) {\n-  legacyLog(`task26:${value}`);\n+  log(`task26:${value}`);\n   return value * 26;\n }\ndiff --git a/src/mod-27.mjs b/src/mod-27.mjs\nindex 4107175..24c3ce9 100644\n--- a/src/mod-27.mjs\n+++ b/src/mod-27.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task27(value) {\n-  legacyLog(`task27:${value}`);\n+  log(`task27:${value}`);\n   return value * 27;\n }\ndiff --git a/src/mod-28.mjs b/src/mod-28.mjs\nindex 6f8fec4..43dd447 100644\n--- a/src/mod-28.mjs\n+++ b/src/mod-28.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task28(value) {\n-  legacyLog(`task28:${value}`);\n+  log(`task28:${value}`);\n   return value * 28;\n }\ndiff --git a/src/mod-29.mjs b/src/mod-29.mjs\nindex 71ea216..a7dd0a9 100644\n--- a/src/mod-29.mjs\n+++ b/src/mod-29.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task29(value) {\n-  legacyLog(`task29:${value}`);\n+  log(`task29:${value}`);\n   return value * 29;\n }\ndiff --git a/src/mod-30.mjs b/src/mod-30.mjs\nindex 0ed95e8..0d1eea4 100644\n--- a/src/mod-30.mjs\n+++ b/src/mod-30.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task30(value) {\n-  legacyLog(`task30:${value}`);\n+  log(`task30:${value}`);\n   return value * 30;\n }\ndiff --git a/src/mod-31.mjs b/src/mod-31.mjs\nindex 5c3380c..55ccb70 100644\n--- a/src/mod-31.mjs\n+++ b/src/mod-31.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task31(value) {\n-  legacyLog(`task31:${value}`);\n+  log(`task31:${value}`);\n   return value * 31;\n }\ndiff --git a/src/mod-32.mjs b/src/mod-32.mjs\nindex ef7ef42..c7adf56 100644\n--- a/src/mod-32.mjs\n+++ b/src/mod-32.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task32(value) {\n-  legacyLog(`task32:${value}`);\n+  log(`task32:${value}`);\n   return value * 32;\n }\ndiff --git a/src/mod-33.mjs b/src/mod-33.mjs\nindex 8d9bdbc..a336a0d 100644\n--- a/src/mod-33.mjs\n+++ b/src/mod-33.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task33(value) {\n-  legacyLog(`task33:${value}`);\n+  log(`task33:${value}`);\n   return value * 33;\n }\ndiff --git a/src/mod-34.mjs b/src/mod-34.mjs\nindex dfaf5ee..7c6e0ef 100644\n--- a/src/mod-34.mjs\n+++ b/src/mod-34.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task34(value) {\n-  legacyLog(`task34:${value}`);\n+  log(`task34:${value}`);\n   return value * 34;\n }\ndiff --git a/src/mod-35.mjs b/src/mod-35.mjs\nindex 7d9106b..46f5a17 100644\n--- a/src/mod-35.mjs\n+++ b/src/mod-35.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task35(value) {\n-  legacyLog(`task35:${value}`);\n+  log(`task35:${value}`);\n   return value * 35;\n }\ndiff --git a/src/mod-36.mjs b/src/mod-36.mjs\nindex eca4049..56c3639 100644\n--- a/src/mod-36.mjs\n+++ b/src/mod-36.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task36(value) {\n-  legacyLog(`task36:${value}`);\n+  log(`task36:${value}`);\n   return value * 36;\n }\ndiff --git a/src/mod-37.mjs b/src/mod-37.mjs\nindex 5863d50..017324b 100644\n--- a/src/mod-37.mjs\n+++ b/src/mod-37.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task37(value) {\n-  legacyLog(`task37:${value}`);\n+  log(`task37:${value}`);\n   return value * 37;\n }\ndiff --git a/src/mod-38.mjs b/src/mod-38.mjs\nindex 3cecde3..1c92b8d 100644\n--- a/src/mod-38.mjs\n+++ b/src/mod-38.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task38(value) {\n-  legacyLog(`task38:${value}`);\n+  log(`task38:${value}`);\n   return value * 38;\n }\ndiff --git a/src/mod-39.mjs b/src/mod-39.mjs\nindex c1fa171..ac1d3ff 100644\n--- a/src/mod-39.mjs\n+++ b/src/mod-39.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task39(value) {\n-  legacyLog(`task39:${value}`);\n+  log(`task39:${value}`);\n   return value * 39;\n }\ndiff --git a/src/mod-40.mjs b/src/mod-40.mjs\nindex 379a55b..84468b1 100644\n--- a/src/mod-40.mjs\n+++ b/src/mod-40.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task40(value) {\n-  legacyLog(`task40:${value}`);\n+  log(`task40:${value}`);\n   return value * 40;\n }\n",
+      "evidence": {},
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 332245,
+        "cache_write": 0,
+        "cache_read": 301824,
+        "output": 8581
+      },
+      "weighted_units_raw": 405332.4,
+      "codex_credits_raw": null,
+      "codex_credits": 0.560447,
+      "codex_credit_breakdown": {
+        "input": 0.152105,
+        "cache_read": 0.150912,
+        "output": 0.25743,
+        "total": 0.5604469999999999,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.152105,
+            "cache_read": 0.150912,
+            "output": 0.25743,
+            "total": 0.5604469999999999
+          }
+        }
+      }
+    },
+    {
+      "host": "codex",
+      "scenario": "C",
+      "arm": "forge",
+      "run": 1,
+      "commit": "c4e607e670e52b161673c29bc91169ebdf079407",
+      "config_hash": "3cb8b97999bfdf4c98ae594d569d57765d67ff8627e6c099bb899ce65fba54e7",
+      "clean_start": true,
+      "model": "gpt-5.6-luna",
+      "effort": "max",
+      "tier": "default",
+      "host_version": "codex-cli 0.146.0",
+      "elapsed_ms": 181879,
+      "model_elapsed_ms": 181688,
+      "completed": true,
+      "quality": 1,
+      "usage": {
+        "input": 36740,
+        "cache_write": 0,
+        "cache_read": 147456,
+        "output": 7329
+      },
+      "weighted_units": 95459.6,
+      "calls": 1,
+      "session_id": "019fc79a-9050-7e40-b5bf-69d329ed8b49",
+      "subscription": {
+        "known": true,
+        "buckets": {
+          "codex.primary": {
+            "delta_percentage_points": 0,
+            "before_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "after_credits": {
+              "hasCredits": false,
+              "unlimited": false,
+              "balance": "0"
+            },
+            "credits_consumed": 0,
+            "valid": true
+          }
+        },
+        "lifetime_tokens_delta": 0
+      },
+      "verification": {
+        "passed": true,
+        "exit_code": 0,
+        "output": "✔ no legacyLog identifier remains anywhere in src (19.2186ms)\n✔ every module still works through the renamed log (24.0326ms)\n✔ log module exports log and not legacyLog (0.1609ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 127.6876\n"
+      },
+      "hidden_verification": null,
+      "interrupted": null,
+      "external_preserved": null,
+      "final_message": "Renamed `legacyLog` to `log` in `src/log.mjs` and all 40 modules. Behavior is unchanged.\n\n`node --test` passes: 3/3 tests. No `legacyLog` remains in `src`; remaining matches are intentional test assertions.",
+      "process_exit": 0,
+      "provider_error": null,
+      "diff": "diff --git a/src/log.mjs b/src/log.mjs\nindex 9b062df..f3e634d 100644\n--- a/src/log.mjs\n+++ b/src/log.mjs\n@@ -1,6 +1,6 @@\n const lines = [];\n \n-export function legacyLog(message) {\n+export function log(message) {\n   lines.push(String(message));\n   return lines.length;\n }\ndiff --git a/src/mod-01.mjs b/src/mod-01.mjs\nindex c1e12cd..40a7a6b 100644\n--- a/src/mod-01.mjs\n+++ b/src/mod-01.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task01(value) {\n-  legacyLog(`task01:${value}`);\n+  log(`task01:${value}`);\n   return value * 1;\n }\ndiff --git a/src/mod-02.mjs b/src/mod-02.mjs\nindex 42c0ff9..379173b 100644\n--- a/src/mod-02.mjs\n+++ b/src/mod-02.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task02(value) {\n-  legacyLog(`task02:${value}`);\n+  log(`task02:${value}`);\n   return value * 2;\n }\ndiff --git a/src/mod-03.mjs b/src/mod-03.mjs\nindex 915de56..4fc8f58 100644\n--- a/src/mod-03.mjs\n+++ b/src/mod-03.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task03(value) {\n-  legacyLog(`task03:${value}`);\n+  log(`task03:${value}`);\n   return value * 3;\n }\ndiff --git a/src/mod-04.mjs b/src/mod-04.mjs\nindex 0a046a6..5067834 100644\n--- a/src/mod-04.mjs\n+++ b/src/mod-04.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task04(value) {\n-  legacyLog(`task04:${value}`);\n+  log(`task04:${value}`);\n   return value * 4;\n }\ndiff --git a/src/mod-05.mjs b/src/mod-05.mjs\nindex a8c554e..5068c04 100644\n--- a/src/mod-05.mjs\n+++ b/src/mod-05.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task05(value) {\n-  legacyLog(`task05:${value}`);\n+  log(`task05:${value}`);\n   return value * 5;\n }\ndiff --git a/src/mod-06.mjs b/src/mod-06.mjs\nindex 9834ab7..227ae42 100644\n--- a/src/mod-06.mjs\n+++ b/src/mod-06.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task06(value) {\n-  legacyLog(`task06:${value}`);\n+  log(`task06:${value}`);\n   return value * 6;\n }\ndiff --git a/src/mod-07.mjs b/src/mod-07.mjs\nindex 6cf95bd..172a9bc 100644\n--- a/src/mod-07.mjs\n+++ b/src/mod-07.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task07(value) {\n-  legacyLog(`task07:${value}`);\n+  log(`task07:${value}`);\n   return value * 7;\n }\ndiff --git a/src/mod-08.mjs b/src/mod-08.mjs\nindex 69de769..5b8e2dc 100644\n--- a/src/mod-08.mjs\n+++ b/src/mod-08.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task08(value) {\n-  legacyLog(`task08:${value}`);\n+  log(`task08:${value}`);\n   return value * 8;\n }\ndiff --git a/src/mod-09.mjs b/src/mod-09.mjs\nindex 9880b10..d5fc0a4 100644\n--- a/src/mod-09.mjs\n+++ b/src/mod-09.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task09(value) {\n-  legacyLog(`task09:${value}`);\n+  log(`task09:${value}`);\n   return value * 9;\n }\ndiff --git a/src/mod-10.mjs b/src/mod-10.mjs\nindex 8d28b2e..dbc3729 100644\n--- a/src/mod-10.mjs\n+++ b/src/mod-10.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task10(value) {\n-  legacyLog(`task10:${value}`);\n+  log(`task10:${value}`);\n   return value * 10;\n }\ndiff --git a/src/mod-11.mjs b/src/mod-11.mjs\nindex 7d7d2ca..fc7e847 100644\n--- a/src/mod-11.mjs\n+++ b/src/mod-11.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task11(value) {\n-  legacyLog(`task11:${value}`);\n+  log(`task11:${value}`);\n   return value * 11;\n }\ndiff --git a/src/mod-12.mjs b/src/mod-12.mjs\nindex 1a2117c..f478b77 100644\n--- a/src/mod-12.mjs\n+++ b/src/mod-12.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task12(value) {\n-  legacyLog(`task12:${value}`);\n+  log(`task12:${value}`);\n   return value * 12;\n }\ndiff --git a/src/mod-13.mjs b/src/mod-13.mjs\nindex 2e9178d..114462f 100644\n--- a/src/mod-13.mjs\n+++ b/src/mod-13.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task13(value) {\n-  legacyLog(`task13:${value}`);\n+  log(`task13:${value}`);\n   return value * 13;\n }\ndiff --git a/src/mod-14.mjs b/src/mod-14.mjs\nindex b63be11..1e4b296 100644\n--- a/src/mod-14.mjs\n+++ b/src/mod-14.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task14(value) {\n-  legacyLog(`task14:${value}`);\n+  log(`task14:${value}`);\n   return value * 14;\n }\ndiff --git a/src/mod-15.mjs b/src/mod-15.mjs\nindex 2ee6381..c62e9cd 100644\n--- a/src/mod-15.mjs\n+++ b/src/mod-15.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task15(value) {\n-  legacyLog(`task15:${value}`);\n+  log(`task15:${value}`);\n   return value * 15;\n }\ndiff --git a/src/mod-16.mjs b/src/mod-16.mjs\nindex 18a5843..0809d78 100644\n--- a/src/mod-16.mjs\n+++ b/src/mod-16.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task16(value) {\n-  legacyLog(`task16:${value}`);\n+  log(`task16:${value}`);\n   return value * 16;\n }\ndiff --git a/src/mod-17.mjs b/src/mod-17.mjs\nindex 2b4ceaf..096431b 100644\n--- a/src/mod-17.mjs\n+++ b/src/mod-17.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task17(value) {\n-  legacyLog(`task17:${value}`);\n+  log(`task17:${value}`);\n   return value * 17;\n }\ndiff --git a/src/mod-18.mjs b/src/mod-18.mjs\nindex 60dbea6..5a206cc 100644\n--- a/src/mod-18.mjs\n+++ b/src/mod-18.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task18(value) {\n-  legacyLog(`task18:${value}`);\n+  log(`task18:${value}`);\n   return value * 18;\n }\ndiff --git a/src/mod-19.mjs b/src/mod-19.mjs\nindex d8d1fe1..7e72120 100644\n--- a/src/mod-19.mjs\n+++ b/src/mod-19.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task19(value) {\n-  legacyLog(`task19:${value}`);\n+  log(`task19:${value}`);\n   return value * 19;\n }\ndiff --git a/src/mod-20.mjs b/src/mod-20.mjs\nindex d24474e..de1e870 100644\n--- a/src/mod-20.mjs\n+++ b/src/mod-20.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task20(value) {\n-  legacyLog(`task20:${value}`);\n+  log(`task20:${value}`);\n   return value * 20;\n }\ndiff --git a/src/mod-21.mjs b/src/mod-21.mjs\nindex 7f10c48..41de0ff 100644\n--- a/src/mod-21.mjs\n+++ b/src/mod-21.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task21(value) {\n-  legacyLog(`task21:${value}`);\n+  log(`task21:${value}`);\n   return value * 21;\n }\ndiff --git a/src/mod-22.mjs b/src/mod-22.mjs\nindex 6f1c4a1..7a13647 100644\n--- a/src/mod-22.mjs\n+++ b/src/mod-22.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task22(value) {\n-  legacyLog(`task22:${value}`);\n+  log(`task22:${value}`);\n   return value * 22;\n }\ndiff --git a/src/mod-23.mjs b/src/mod-23.mjs\nindex 717052b..790ce34 100644\n--- a/src/mod-23.mjs\n+++ b/src/mod-23.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task23(value) {\n-  legacyLog(`task23:${value}`);\n+  log(`task23:${value}`);\n   return value * 23;\n }\ndiff --git a/src/mod-24.mjs b/src/mod-24.mjs\nindex 300df8b..ef4a9f9 100644\n--- a/src/mod-24.mjs\n+++ b/src/mod-24.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task24(value) {\n-  legacyLog(`task24:${value}`);\n+  log(`task24:${value}`);\n   return value * 24;\n }\ndiff --git a/src/mod-25.mjs b/src/mod-25.mjs\nindex 2cfe169..d1b06fb 100644\n--- a/src/mod-25.mjs\n+++ b/src/mod-25.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task25(value) {\n-  legacyLog(`task25:${value}`);\n+  log(`task25:${value}`);\n   return value * 25;\n }\ndiff --git a/src/mod-26.mjs b/src/mod-26.mjs\nindex a6e8e04..621402d 100644\n--- a/src/mod-26.mjs\n+++ b/src/mod-26.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task26(value) {\n-  legacyLog(`task26:${value}`);\n+  log(`task26:${value}`);\n   return value * 26;\n }\ndiff --git a/src/mod-27.mjs b/src/mod-27.mjs\nindex 4107175..24c3ce9 100644\n--- a/src/mod-27.mjs\n+++ b/src/mod-27.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task27(value) {\n-  legacyLog(`task27:${value}`);\n+  log(`task27:${value}`);\n   return value * 27;\n }\ndiff --git a/src/mod-28.mjs b/src/mod-28.mjs\nindex 6f8fec4..43dd447 100644\n--- a/src/mod-28.mjs\n+++ b/src/mod-28.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task28(value) {\n-  legacyLog(`task28:${value}`);\n+  log(`task28:${value}`);\n   return value * 28;\n }\ndiff --git a/src/mod-29.mjs b/src/mod-29.mjs\nindex 71ea216..a7dd0a9 100644\n--- a/src/mod-29.mjs\n+++ b/src/mod-29.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task29(value) {\n-  legacyLog(`task29:${value}`);\n+  log(`task29:${value}`);\n   return value * 29;\n }\ndiff --git a/src/mod-30.mjs b/src/mod-30.mjs\nindex 0ed95e8..0d1eea4 100644\n--- a/src/mod-30.mjs\n+++ b/src/mod-30.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task30(value) {\n-  legacyLog(`task30:${value}`);\n+  log(`task30:${value}`);\n   return value * 30;\n }\ndiff --git a/src/mod-31.mjs b/src/mod-31.mjs\nindex 5c3380c..55ccb70 100644\n--- a/src/mod-31.mjs\n+++ b/src/mod-31.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task31(value) {\n-  legacyLog(`task31:${value}`);\n+  log(`task31:${value}`);\n   return value * 31;\n }\ndiff --git a/src/mod-32.mjs b/src/mod-32.mjs\nindex ef7ef42..c7adf56 100644\n--- a/src/mod-32.mjs\n+++ b/src/mod-32.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task32(value) {\n-  legacyLog(`task32:${value}`);\n+  log(`task32:${value}`);\n   return value * 32;\n }\ndiff --git a/src/mod-33.mjs b/src/mod-33.mjs\nindex 8d9bdbc..a336a0d 100644\n--- a/src/mod-33.mjs\n+++ b/src/mod-33.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task33(value) {\n-  legacyLog(`task33:${value}`);\n+  log(`task33:${value}`);\n   return value * 33;\n }\ndiff --git a/src/mod-34.mjs b/src/mod-34.mjs\nindex dfaf5ee..7c6e0ef 100644\n--- a/src/mod-34.mjs\n+++ b/src/mod-34.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task34(value) {\n-  legacyLog(`task34:${value}`);\n+  log(`task34:${value}`);\n   return value * 34;\n }\ndiff --git a/src/mod-35.mjs b/src/mod-35.mjs\nindex 7d9106b..46f5a17 100644\n--- a/src/mod-35.mjs\n+++ b/src/mod-35.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task35(value) {\n-  legacyLog(`task35:${value}`);\n+  log(`task35:${value}`);\n   return value * 35;\n }\ndiff --git a/src/mod-36.mjs b/src/mod-36.mjs\nindex eca4049..56c3639 100644\n--- a/src/mod-36.mjs\n+++ b/src/mod-36.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task36(value) {\n-  legacyLog(`task36:${value}`);\n+  log(`task36:${value}`);\n   return value * 36;\n }\ndiff --git a/src/mod-37.mjs b/src/mod-37.mjs\nindex 5863d50..017324b 100644\n--- a/src/mod-37.mjs\n+++ b/src/mod-37.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task37(value) {\n-  legacyLog(`task37:${value}`);\n+  log(`task37:${value}`);\n   return value * 37;\n }\ndiff --git a/src/mod-38.mjs b/src/mod-38.mjs\nindex 3cecde3..1c92b8d 100644\n--- a/src/mod-38.mjs\n+++ b/src/mod-38.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task38(value) {\n-  legacyLog(`task38:${value}`);\n+  log(`task38:${value}`);\n   return value * 38;\n }\ndiff --git a/src/mod-39.mjs b/src/mod-39.mjs\nindex c1fa171..ac1d3ff 100644\n--- a/src/mod-39.mjs\n+++ b/src/mod-39.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task39(value) {\n-  legacyLog(`task39:${value}`);\n+  log(`task39:${value}`);\n   return value * 39;\n }\ndiff --git a/src/mod-40.mjs b/src/mod-40.mjs\nindex 379a55b..84468b1 100644\n--- a/src/mod-40.mjs\n+++ b/src/mod-40.mjs\n@@ -1,6 +1,6 @@\n-import { legacyLog } from \"./log.mjs\";\n+import { log } from \"./log.mjs\";\n \n export function task40(value) {\n-  legacyLog(`task40:${value}`);\n+  log(`task40:${value}`);\n   return value * 40;\n }\n",
+      "evidence": {
+        "model_token_ratio": 0.5619436310610106
+      },
+      "billing_mode": "subscription-only",
+      "api_credentials_stripped": true,
+      "usage_raw": {
+        "input": 184196,
+        "cache_write": 0,
+        "cache_read": 147456,
+        "output": 7329
+      },
+      "weighted_units_raw": 235586.6,
+      "codex_credits_raw": null,
+      "codex_credits": 0.477298,
+      "codex_credit_breakdown": {
+        "input": 0.1837,
+        "cache_read": 0.073728,
+        "output": 0.21987,
+        "total": 0.477298,
+        "by_model": {
+          "gpt-5.6-luna": {
+            "input": 0.1837,
+            "cache_read": 0.073728,
+            "output": 0.21987,
+            "total": 0.477298
+          }
+        }
+      }
+    }
+  ],
+  "judgments": [],
+  "summary": [
+    {
+      "host": "codex",
+      "scenario": "C",
+      "arm": "solo",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 112089.4,
+      "cost_range": [
+        112089.4,
+        112089.4
+      ],
+      "elapsed_ms_median": 215075,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.47601128583797664,
+      "codex_credits_median": 0.560447
+    },
+    {
+      "host": "codex",
+      "scenario": "C",
+      "arm": "forge",
+      "runs": 1,
+      "completed": true,
+      "completion_rate": 1,
+      "usage_known": true,
+      "calls_median": 1,
+      "cost_median": 95459.6,
+      "cost_range": [
+        95459.6,
+        95459.6
+      ],
+      "elapsed_ms_median": 181879,
+      "subscription_known": true,
+      "subscription_delta_median": 0,
+      "subscription_credits_median": 0,
+      "account_lifetime_tokens_delta_median": 0,
+      "quality_median": 1,
+      "cache_ratio_median": 0.4446106159468358,
+      "codex_credits_median": 0.477298
+    }
+  ],
+  "comparisons": [
+    {
+      "host": "codex",
+      "scenario": "C",
+      "valid": true,
+      "cost_ratio": 0.8516380674711437,
+      "quality_ratio": 1,
+      "cache_ratio_delta": -0.03140066989114082,
+      "elapsed_ratio": 0.8456538416831338,
+      "subscription_ratio": null,
+      "credit_ratio": null,
+      "runs": {
+        "solo": 1,
+        "forge": 1
+      }
+    }
+  ],
+  "gates": [
+    {
+      "host": "codex",
+      "scenario": "C",
+      "passed": false,
+      "reasons": [
+        "model-token-gate"
+      ]
+    }
+  ],
+  "metrics_revision": 2
+}
