@@ -61,6 +61,17 @@ Module docstring, `from __future__ import annotations`, argparse isolated in `pa
 `logging.basicConfig` inside `main()`, `def main() -> int` returning distinct exit codes per
 failure, and `if __name__ == "__main__": sys.exit(main())`.
 
+## Docstrings and comments
+
+- Write docstrings and comments in English by default, unless the user explicitly requests
+  another language.
+- Follow PEP 257 and the repository's documentation conventions. Add docstrings to public
+  modules, classes, functions, and methods when they clarify purpose, behavior, contracts,
+  parameters, return values, or raised exceptions.
+- Keep comments concise and use them to explain why, constraints, or non-obvious behavior;
+  do not restate code that is already clear. Update or remove comments and docstrings that
+  become stale.
+
 ## Secrets
 
 Read from `os.environ` or the project's settings library (see `fastapi` when applicable). Never a

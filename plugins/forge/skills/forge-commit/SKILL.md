@@ -9,13 +9,12 @@ Create a commit only when the user requests one. Run this skill after the
 implementation has green focused verification; never commit merely because
 the work is locally plausible.
 
-By default, whenever this skill creates or edits `AGENTS.md`, `CLAUDE.md`, or
-the canonical `README.md`, every prose section it authors or rewrites in that
-file must be in English only. If the user explicitly requests another language
-for that file or change, follow that request. Do not add unrequested Spanish or
-bilingual prose. Preserve code, commands, identifiers, quoted user text,
-untouched existing text, and intentionally localized variants such as
-`README.es.md`.
+By default, whenever this skill creates or edits a `README*.md`, `AGENTS.md`, or
+`CLAUDE.md`, every prose section it authors or rewrites in that file must be in
+English only. If the user explicitly requests another language for that file or
+change, follow that request. Do not add unrequested Spanish or bilingual prose.
+Preserve code, commands, identifiers, quoted user text, untouched existing text,
+and intentionally localized variants such as `README.es.md`.
 
 ## Workflow
 
