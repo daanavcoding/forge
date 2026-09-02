@@ -143,7 +143,9 @@ uses that current context to discover the right specialists.
 When its local executable is available, Forge performs a bounded code-graph
 query and uses the result as discovery evidence. If Graphify is unavailable,
 invalid, or times out, Forge continues with the host's normal repository tools.
-Generated `graphify-out/` data stays local and is never committed.
+Generated `graphify-out/` and `.forge/` data stays local and is never committed.
+Every Forge activation adds any missing rules for these paths to the consumer
+repository's `.gitignore`.
 
 ### Ponytail
 

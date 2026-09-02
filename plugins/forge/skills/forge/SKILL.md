@@ -39,8 +39,11 @@ or nested Forge run. Never read or expose `.env` or `appsettings.json`.
    - Select the necessary private specialists from `FORGE_SKILL_DISCOVERY` using
      the task, project context, Graphify evidence, and focused inspection. Do not
      open skill bodies while selecting. Then read and apply only the selected
-     bodies once from `PRIVATE_SKILL_ROOT`, before editing, and mention the
-     selected specialists in the handoff when useful.
+     bodies once from `PRIVATE_SKILL_ROOT`, before editing. Selected specialists
+     are active instructions, not optional background: follow all task-relevant
+     guidance through implementation, verification, and review. A direct user
+     requirement overrides only conflicting guidance; apply the rest, never skip
+     it silently, and disclose material deviations in the handoff.
 
 3. Make the smallest planned source change. Keep discovery bounded, never
    repeat an unchanged command, and run no pre-change test except to diagnose

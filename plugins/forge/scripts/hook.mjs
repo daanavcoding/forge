@@ -14,6 +14,71 @@ const MAX_TRANSCRIPT_TAIL_BYTES = 2 * 1024 * 1024;
 const PLUGIN_VERSION = JSON.parse(fs.readFileSync(new URL('../plugin.json', import.meta.url), 'utf8')).version;
 const APPROVAL = /^(?:s[ií]|yes|approved|approve|adelante|ejecuta|ejecutar|execute|go ahead)(?:[,.!;:]?\s+(?:el\s+plan|the\s+plan|ahora|now|por\s+favor|please|todo))*[.!]?$/i;
 const FORGE_PLAN = /^#{1,3}\s+Forge plan\s*$/im;
+const FORGE_IGNORE_RULES = ['.forge/', 'graphify-out/'];
+
+function repositoryRoot(repo) {
+  const requestedRoot = path.resolve(repo);
+  let directory = requestedRoot;
+  while (true) {
+    if (fs.existsSync(path.join(directory, '.git'))) return directory;
+    const parent = path.dirname(directory);
+    if (parent === directory) return requestedRoot;
+    directory = parent;
+  }
+}
+
+function ignoreRulePresent(line, rule) {
+  const value = String(line || '').trim().replace(/^\uFEFF/, '').replaceAll('\\', '/');
+  if (!value || value.startsWith('#') || value.startsWith('!')) return false;
+  const target = rule.slice(0, -1);
+  const normalized = value.replace(/^\/+/, '').replace(/\/+$/, '');
+  return [
+    target,
+    `**/${target}`,
+    `${target}/*`,
+    `${target}/**`,
+    `**/${target}/*`,
+    `**/${target}/**`,
+  ].includes(normalized);
+}
+
+function ignorePathFor(repo, ignoreRoot) {
+  return path.relative(path.resolve(repo), path.join(ignoreRoot, '.gitignore')).replaceAll('\\', '/') || '.gitignore';
+}
+
+function ignoreResult(repo, ignoreRoot, status, error = null) {
+  return {
+    status,
+    path: ignorePathFor(repo, ignoreRoot),
+    rules: [...FORGE_IGNORE_RULES],
+    ...(error ? { error: error?.code || 'unknown' } : {}),
+  };
+}
+
+function ensureForgeArtifactsIgnored(repo) {
+  const requestedRoot = path.resolve(repo);
+  let ignoreRoot = requestedRoot;
+  try {
+    ignoreRoot = repositoryRoot(requestedRoot);
+    const ignorePath = path.join(ignoreRoot, '.gitignore');
+    let contents = '';
+    try {
+      contents = fs.readFileSync(ignorePath, 'utf8');
+    } catch (error) {
+      if (error?.code !== 'ENOENT') return ignoreResult(repo, ignoreRoot, 'failed', error);
+    }
+    const missing = FORGE_IGNORE_RULES.filter((rule) => !contents.split(/\r?\n/).some((line) => ignoreRulePresent(line, rule)));
+    if (missing.length === 0) return ignoreResult(repo, ignoreRoot, 'ensured');
+
+    const lineEnding = contents.includes('\r\n') ? '\r\n' : '\n';
+    const separator = contents && !contents.endsWith('\n') ? lineEnding : '';
+    const nextContents = `${contents}${separator}${missing.join(lineEnding)}${lineEnding}`;
+    fs.writeFileSync(ignorePath, nextContents, 'utf8');
+    return ignoreResult(repo, ignoreRoot, 'ensured');
+  } catch (error) {
+    return ignoreResult(repo, ignoreRoot, 'failed', error);
+  }
+}
 
 function boundUtf8(value, maxBytes) {
   const text = String(value || '').trim();
@@ -141,6 +206,7 @@ export function handle(payload = {}, dependencies = {}) {
   const approvalConfirmed = Boolean(continuation);
   const defaultTask = 'Forge invocation';
   const task = String(continuation?.task || (attachment || marker)?.groups?.task || defaultTask).trim() || defaultTask;
+  const forgeIgnore = ensureForgeArtifactsIgnored(repo);
   let runState = null;
   let stateError = null;
   try {
@@ -222,6 +288,7 @@ export function handle(payload = {}, dependencies = {}) {
     activation,
     task,
     graphify: graphifyStatus,
+    forge_ignore: forgeIgnore,
     run_state: runState,
     project_context_file: {
       file: projectContext.file,
@@ -254,7 +321,7 @@ export function handle(payload = {}, dependencies = {}) {
     approvalConfirmed
       ? `Forge is active and the user approved the plan in this turn. The selected \`${skillName}\` skill is the public workflow source. Complete the execution gate and proceed with the approved plan.`
       : `Forge is active. The selected \`${skillName}\` skill is the public workflow source. The activation request is not plan approval: present the plan, stop, and wait for explicit confirmation in a later user turn before execution. Private specialist skills are discovered by Forge after that approval during plan execution from the project context and repository evidence.`,
-    'Use FORGE_FACTS only for activation, constraints, run state, and ephemeral Graphify metadata.',
+    'Use FORGE_FACTS only for activation, constraints, run state, artifact hygiene, and ephemeral Graphify metadata.',
     '',
     'FORGE_PROJECT_CONTEXT',
     [

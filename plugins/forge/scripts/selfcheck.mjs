@@ -28,6 +28,7 @@ const previousGraphifyExecutable = process.env.FORGE_GRAPHIFY_EXECUTABLE;
 process.env.FORGE_GRAPHIFY_EXECUTABLE = missingGraphify;
 const skill = fs.readFileSync(new URL('../skills/forge/SKILL.md', import.meta.url), 'utf8');
 const commitSkill = fs.readFileSync(new URL('../skills/forge-commit/SKILL.md', import.meta.url), 'utf8');
+const mcpSkill = fs.readFileSync(new URL('../worker-skills/mcp/SKILL.md', import.meta.url), 'utf8');
 const commitInterface = fs.readFileSync(new URL('../skills/forge-commit/agents/openai.yaml', import.meta.url), 'utf8');
 const publicSkillRoot = new URL('../skills/', import.meta.url);
 const privateSkillRoot = new URL('../worker-skills/', import.meta.url);
@@ -267,6 +268,11 @@ assert.doesNotMatch(context, /"finalizer"/);
 assert.match(context, /"persistent":true/);
 assert.match(context, /"approval_required":true/);
 const activeFacts = JSON.parse(context.split('FORGE_FACTS\n')[1]);
+assert.deepEqual(activeFacts.forge_ignore, {
+  status: 'ensured',
+  path: '.gitignore',
+  rules: ['.forge/', 'graphify-out/'],
+});
 assert.equal(activeFacts.skill_catalog.available, true);
 assert.equal(activeFacts.skill_catalog.count, PRIVATE_SKILL_CATALOG.length);
 assert.match(activeFacts.skill_catalog.sha256, /^[0-9a-f]{64}$/);
@@ -294,11 +300,89 @@ assert.match(skill, /FORGE_PROJECT_CONTEXT/);
 assert.match(skill, /--manual-approved/);
 assert.match(skill, /FORGE_SKILL_DISCOVERY/);
 assert.match(skill, /PRIVATE_SKILL_ROOT/);
+assert.match(skill, /active instructions, not optional background/);
+assert.match(skill, /direct user\s+requirement overrides only conflicting guidance/);
+assert.match(skill, /apply the rest, never skip\s+it silently/);
 assert.match(skill, /SessionEnd/);
+assert.match(mcpSkill, /mcp>=2,<3/);
+assert.match(mcpSkill, /MCPServer/);
+assert.match(mcpSkill, /negotiated version is `2026-07-28`/);
+assert.match(mcpSkill, /Resolve\(\.\.\.\)/);
+assert.match(mcpSkill, /RequestStateSecurity/);
+assert.match(mcpSkill, /Python SDK 2\.0 does not implement this extension yet/);
+assert.ok(Buffer.byteLength(mcpSkill, 'utf8') < 10 * 1024, 'mcp skill should stay compact');
 assert.equal(fs.existsSync(path.join(tmp, '.forge')), true);
 assert.equal(fs.existsSync(path.join(tmp, '.forge', 'runs')), true);
 assert.equal(fs.existsSync(path.join(tmp, '.forge', 'runs', JSON.parse(context.split('FORGE_FACTS\n')[1]).run_state.run_id, 'run.json')), true);
-assert.equal(fs.existsSync(path.join(tmp, '.gitignore')), false);
+assert.equal(fs.readFileSync(path.join(tmp, '.gitignore'), 'utf8'), '.forge/\ngraphify-out/\n');
+
+const repeatedIgnore = handle({ prompt: '$forge repeat ignore setup', cwd: tmp }, {
+  graphify: { attempted: false, status: 'unavailable', fallback_reason: 'test' },
+}).hookSpecificOutput.additionalContext;
+const repeatedIgnoreFacts = JSON.parse(repeatedIgnore.split('FORGE_FACTS\n')[1]);
+assert.deepEqual(repeatedIgnoreFacts.forge_ignore, {
+  status: 'ensured',
+  path: '.gitignore',
+  rules: ['.forge/', 'graphify-out/'],
+});
+assert.equal(fs.readFileSync(path.join(tmp, '.gitignore'), 'utf8'), '.forge/\ngraphify-out/\n');
+
+const partialIgnoreTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-partial-ignore-'));
+fs.writeFileSync(path.join(partialIgnoreTmp, '.gitignore'), '# Existing rules\r\n.forge/\r\n', 'utf8');
+const partialIgnore = handle({ prompt: '$forge complete ignore setup', cwd: partialIgnoreTmp }, {
+  graphify: { attempted: false, status: 'unavailable', fallback_reason: 'test' },
+}).hookSpecificOutput.additionalContext;
+const partialIgnoreFacts = JSON.parse(partialIgnore.split('FORGE_FACTS\n')[1]);
+assert.deepEqual(partialIgnoreFacts.forge_ignore, {
+  status: 'ensured',
+  path: '.gitignore',
+  rules: ['.forge/', 'graphify-out/'],
+});
+assert.equal(fs.readFileSync(path.join(partialIgnoreTmp, '.gitignore'), 'utf8'), '# Existing rules\r\n.forge/\r\ngraphify-out/\r\n');
+const partialRepeat = handle({ prompt: '$forge verify ignore setup', cwd: partialIgnoreTmp }, {
+  graphify: { attempted: false, status: 'unavailable', fallback_reason: 'test' },
+}).hookSpecificOutput.additionalContext;
+const partialRepeatFacts = JSON.parse(partialRepeat.split('FORGE_FACTS\n')[1]);
+assert.equal(partialRepeatFacts.forge_ignore.status, 'ensured');
+assert.equal(fs.readFileSync(path.join(partialIgnoreTmp, '.gitignore'), 'utf8'), '# Existing rules\r\n.forge/\r\ngraphify-out/\r\n');
+
+const gitIgnoreTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-git-ignore-'));
+const gitInit = spawnSync('git', ['init', '--quiet'], { cwd: gitIgnoreTmp, encoding: 'utf8', windowsHide: true });
+assert.equal(gitInit.status, 0, gitInit.stderr);
+const gitIgnoreContext = handle({ prompt: '$forge verify git ignore rules', cwd: gitIgnoreTmp }, {
+  graphify: { attempted: false, status: 'unavailable', fallback_reason: 'test' },
+}).hookSpecificOutput.additionalContext;
+const gitIgnoreFacts = JSON.parse(gitIgnoreContext.split('FORGE_FACTS\n')[1]);
+assert.equal(gitIgnoreFacts.forge_ignore.status, 'ensured');
+const gitCheckIgnoreForge = spawnSync('git', [
+  'check-ignore', '--no-index', '--quiet', '--', '.forge/test.json',
+], { cwd: gitIgnoreTmp, encoding: 'utf8', windowsHide: true });
+const gitCheckIgnoreGraphify = spawnSync('git', [
+  'check-ignore', '--no-index', '--quiet', '--', 'graphify-out/graph.json',
+], { cwd: gitIgnoreTmp, encoding: 'utf8', windowsHide: true });
+assert.equal(gitCheckIgnoreForge.status, 0, gitCheckIgnoreForge.stderr);
+assert.equal(gitCheckIgnoreGraphify.status, 0, gitCheckIgnoreGraphify.stderr);
+
+const nestedRepoTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-nested-repo-'));
+fs.mkdirSync(path.join(nestedRepoTmp, '.git'));
+const nestedRepo = path.join(nestedRepoTmp, 'packages', 'app');
+fs.mkdirSync(nestedRepo, { recursive: true });
+const nestedIgnore = handle({ prompt: '$forge find repository ignore file', cwd: nestedRepo }, {
+  graphify: { attempted: false, status: 'unavailable', fallback_reason: 'test' },
+}).hookSpecificOutput.additionalContext;
+const nestedIgnoreFacts = JSON.parse(nestedIgnore.split('FORGE_FACTS\n')[1]);
+assert.equal(nestedIgnoreFacts.forge_ignore.path, '../../.gitignore');
+assert.equal(fs.existsSync(path.join(nestedRepoTmp, '.gitignore')), true);
+assert.equal(fs.existsSync(path.join(nestedRepo, '.gitignore')), false);
+
+const failedIgnoreTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-failed-ignore-'));
+fs.mkdirSync(path.join(failedIgnoreTmp, '.gitignore'));
+const failedIgnore = handle({ prompt: '$forge survive ignore failure', cwd: failedIgnoreTmp }, {
+  graphify: { attempted: false, status: 'unavailable', fallback_reason: 'test' },
+}).hookSpecificOutput.additionalContext;
+const failedIgnoreFacts = JSON.parse(failedIgnore.split('FORGE_FACTS\n')[1]);
+assert.equal(failedIgnoreFacts.forge_ignore.status, 'failed');
+assert.equal(fs.existsSync(path.join(failedIgnoreTmp, '.forge')), true);
 
 const genericContextTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-context-generic-'));
 fs.writeFileSync(path.join(genericContextTmp, 'AGENTS.md'), '# Application context\nCONTEXT_ONCE_AGENTS\n', 'utf8');
@@ -901,5 +985,9 @@ else process.env.FORGE_GRAPHIFY_EXECUTABLE = previousGraphifyExecutable;
 fs.rmSync(genericContextTmp, { recursive: true, force: true });
 fs.rmSync(claudeContextTmp, { recursive: true, force: true });
 fs.rmSync(continuationTmp, { recursive: true, force: true });
+fs.rmSync(partialIgnoreTmp, { recursive: true, force: true });
+fs.rmSync(gitIgnoreTmp, { recursive: true, force: true });
+fs.rmSync(nestedRepoTmp, { recursive: true, force: true });
+fs.rmSync(failedIgnoreTmp, { recursive: true, force: true });
 fs.rmSync(tmp, { recursive: true, force: true });
 console.log('forge agent plugin selfcheck: ok');

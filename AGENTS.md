@@ -16,6 +16,9 @@
 - `plugins/forge/scripts/` contains deterministic hooks, host installation and
   doctor commands, run-state handling, and telemetry finalization. Hooks must
   remain fail-open and must not make model or network calls.
+- On activation, the hook may add missing `.forge/` and `graphify-out/` rules
+  to the consumer repository's `.gitignore`; preserve existing content and
+  keep failures fail-open.
 - `.forge/` and benchmark outputs are generated runtime data. Keep generated
   traces, summaries, judges, and ad-hoc results out of commits unless the task
   explicitly requests them.

@@ -19,9 +19,10 @@ This document defines the current public workflow contract.
   context to select relevant private specialist names from the metadata-only
   catalogue, together with the task, Graphify evidence, and focused repository
   inspection. Forge then reads and applies only the selected private
-  `SKILL.md` bodies; bodies are not
-  opened during discovery. The full catalogue is never registered as host
-  skills.
+  `SKILL.md` bodies as active task instructions; bodies are not opened during
+  discovery. Explicit user requirements override only directly conflicting
+  specialist guidance, while the remaining guidance still applies. The full
+  catalogue is never registered as host skills.
 - `FORGE_PLUGIN_CONTEXT`, `FORGE_PROJECT_CONTEXT`, `FORGE_SKILL_DISCOVERY`, and
   `FORGE_FACTS` are model prompt-context blocks, not process environment
   variables. The hook also exposes the bundled catalogue's availability,
@@ -42,6 +43,10 @@ This document defines the current public workflow contract.
   `GRAPHIFY_STATUS`. Empty results are a successful query with no evidence.
   Unavailable, failed, invalid, or timed-out Graphify falls back to native
   Codex discovery without blocking Forge.
+- Every Forge activation ensures that the repository `.gitignore` contains
+  `.forge/` and `graphify-out/`, adding only missing rules and preserving the
+  existing file. The result is reported as `forge_ignore` in `FORGE_FACTS`;
+  failures remain fail-open and do not block the host.
 - The first plan is complete but concise: scope, non-scope, assumptions,
   affected areas, verification, acceptance criteria, and risks belong in it.
   The plan is an execution gate: Forge performs no edit, verification, review,
