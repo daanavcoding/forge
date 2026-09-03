@@ -1,0 +1,80 @@
+name: Update model pricing
+
+on:
+  schedule:
+    - cron: "23 7 * * 1"
+  workflow_dispatch:
+
+concurrency:
+  group: update-model-pricing
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 20
+
+      - name: Refresh generated pricing catalog
+        run: npm run pricing:update
+
+      - name: Detect pricing changes
+        id: changes
+        shell: bash
+        run: |
+          changed="$(git diff --name-only)"
+          if [[ -z "$changed" ]]; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [[ "$changed" != "plugins/forge/data/model-pricing.json" ]]; then
+            echo "Unexpected generated files:" >&2
+            printf '%s\n' "$changed" >&2
+            exit 1
+          fi
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Verify Forge
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          npm run check
+          npm test
+
+      - name: Create and merge pricing pull request
+        if: steps.changes.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: automation/model-pricing
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$PR_BRANCH"
+          git add -- plugins/forge/data/model-pricing.json
+          git commit -m "Update model pricing catalog"
+          git push --force-with-lease origin "HEAD:refs/heads/$PR_BRANCH"
+
+          pr_number="$(gh pr list --base "${{ github.event.repository.default_branch }}" --head "$PR_BRANCH" --state open --json number --jq '.[0].number')"
+          if [[ -z "$pr_number" ]]; then
+            pr_url="$(gh pr create \
+              --base "${{ github.event.repository.default_branch }}" \
+              --head "$PR_BRANCH" \
+              --title "Update model pricing catalog" \
+              --body "Automated weekly refresh from Models.dev. The generated catalog passed Forge's local checks and does not change plugin versions.")"
+            pr_number="${pr_url##*/}"
+          fi
+
+          gh pr merge "$pr_number" --squash --delete-branch

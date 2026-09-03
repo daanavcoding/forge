@@ -11,7 +11,7 @@ server, or hidden network service.
 Task → Plan → Approval → Skills selected → Code → Tests → Review → Handoff
 
 AGENTS.md / CLAUDE.md + Graphify → skill selection
-forge-commit → refreshed context → next task
+forge-commit → branch confirmation → verified commit → push → pull request
 ```
 
 ## Why use it?
@@ -65,8 +65,9 @@ codex plugin marketplace add daanavcoding/forge --ref main
 codex plugin add forge@forge
 ```
 
-Open `/hooks`, trust and enable Forge's `UserPromptSubmit` and `SessionEnd`
-hooks, then restart Codex and start a new task. Invoke it with `$forge <task>`,
+Open `/hooks`, trust and enable Forge's `UserPromptSubmit`, `Stop`, and
+`SessionEnd` hooks, then restart Codex and start a new task. The setup command
+does not report success until Codex confirms every Forge hook is active. Invoke it with `$forge <task>`,
 `/forge <task>`, or the Forge skill picker.
 
 ### Claude Code
@@ -90,7 +91,7 @@ without Codex's separate trust step.
 | **Graphify** | Finds likely entry points and relationships before broad file exploration. |
 | **Ponytail style** | Pushes specialists toward reuse, native features, and the smallest correct change. |
 | **Hooks** | Activate project context and run state locally, deterministically, and fail-open. |
-| **Run summary** | Records the outcome under `.forge/runs/` for audit or resume. |
+| **Run summary** | Records the outcome and immediate host-owned telemetry under `.forge/runs/`; the finalizer resolves the current Codex trace from its session id, `Stop` updates it when the turn ends, and `SessionEnd` refreshes it when the thread closes. |
 
 ### Skills
 
@@ -100,7 +101,7 @@ Forge exposes only two host-selectable workflows. They live in
 | Public skill | Contains |
 | --- | --- |
 | `forge` | The plan, approval, implementation, verification, review, and handoff workflow. |
-| `forge-commit` | Context and README maintenance, narrow staging, verification, and commit creation. |
+| `forge-commit` | Branch confirmation, context and README maintenance, narrow staging, verified commit, push, and pull request. |
 
 The 20 implementation specialists live in
 [`plugins/forge/worker-skills/`](plugins/forge/worker-skills/). They are private
@@ -133,9 +134,13 @@ session alongside the project context.
 | `react` | Hooks, derived state, component boundaries, identity, and tests. |
 | `typescript` | Strict typing, inference, generics, unions, and safe APIs. |
 
-`forge-commit` closes the context loop: it formats and updates the applicable
-`AGENTS.md` for Codex or `CLAUDE.md` for Claude Code, and the next Forge run
-uses that current context to discover the right specialists.
+`forge-commit` closes the context loop: it updates only the project instructions
+that the repository or active Agent Plugins host has already declared
+applicable. It does not choose a context file from the coding-agent provider.
+By default it checks and proposes a feature branch, waits for confirmation,
+commits and pushes there, then returns the pull-request URL. A direct
+default-branch push requires an explicit user instruction. The next Forge run
+uses the refreshed context to discover the right specialists.
 
 ### Graphify
 
@@ -154,6 +159,22 @@ Forge does not require a separate
 Its private specialist `SKILL.md` files already carry that character: understand
 the real path, reuse existing code, prefer standard-library or native features,
 avoid speculative abstractions, and make the smallest correct change.
+
+### Model pricing
+
+Forge estimates API-equivalent cost from the generated
+[`model-pricing.json`](plugins/forge/data/model-pricing.json) catalog. It
+contains validated USD-per-million-token rates from
+[Models.dev](https://models.dev/) and is read locally at runtime; hooks and
+summaries never fetch pricing from the network. Provider and exact model must
+resolve unambiguously, otherwise cost remains unavailable.
+
+The `Update model pricing` GitHub workflow refreshes the catalog every Monday.
+When prices change, it runs Forge's checks, creates a pull request containing
+only the generated catalog, and merges it without changing plugin versions.
+Large removals or price changes above 10x fail for manual investigation.
+Maintainers can run `npm run pricing:update` or verify freshness with
+`npm run pricing:check`.
 
 ## Contributing
 

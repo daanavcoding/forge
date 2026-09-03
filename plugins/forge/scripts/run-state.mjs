@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { replaceTelemetry, stripTelemetry, telemetryFromTrace } from './telemetry.mjs';
+import { normalizeTelemetry, replaceTelemetry, stripTelemetry, telemetryFromTrace } from './telemetry.mjs';
 
 const RUNS_DIR = path.join('.forge', 'runs');
 const RUN_METADATA = 'run.json';
@@ -224,6 +224,17 @@ export function approveSessionRun({
   return { ...approved, persistent };
 }
 
+export function recordRunTelemetryContext({ repo, runId, publicSkills = [], graphifyStatus = null } = {}) {
+  const current = readRunState(repo, runId);
+  if (!current) return null;
+  const next = {
+    ...current,
+    public_skills: [...new Set(publicSkills.map((skill) => String(skill).trim()).filter(Boolean))].sort(),
+    ...(graphifyStatus ? { graphify_status: String(graphifyStatus) } : {}),
+  };
+  return persistRunState(repo, next) ? next : null;
+}
+
 export function resumeRun(repo, requestedRunId = null, options = {}) {
   const previous = latestFailedSummary(repo, requestedRunId);
   if (!previous) return null;
@@ -297,13 +308,30 @@ export function enrichRunSummary({ repo, runId, trace, traceFile = null, telemet
   try {
     const paths = pathsFor(repo, safe);
     const current = fs.readFileSync(paths.summary, 'utf8');
-    const observed = telemetry && typeof telemetry === 'object' && Object.keys(telemetry).length
+    const runState = state || readRunState(repo, safe) || {};
+    const observedTraceFile = traceFile || runState.transcript_path || null;
+    let observedTrace = trace;
+    if ((observedTrace === null || observedTrace === undefined) && observedTraceFile) {
+      try { observedTrace = fs.readFileSync(path.resolve(String(observedTraceFile)), 'utf8'); } catch { observedTrace = null; }
+    }
+    const suppliedTelemetry = telemetry && typeof telemetry === 'object' && Object.keys(telemetry).length;
+    if (!observedTrace && !suppliedTelemetry && /^## Telemetry\s*$/im.test(current)) {
+      return { enriched: true, reason: 'already-enriched' };
+    }
+    const observed = suppliedTelemetry
       ? telemetry
-      : telemetryFromTrace(trace, {
-        state: state || readRunState(repo, safe) || {},
-        source: traceFile ? `host trace: ${traceFile}` : 'host trace',
+      : telemetryFromTrace(observedTrace, {
+        state: runState,
+        source: observedTraceFile ? `host trace: ${observedTraceFile}` : 'host trace',
+      }) || normalizeTelemetry({
+        platform: runState.host,
+        model: runState.model,
+        activation: runState.activation,
+        graphify_status: runState.graphify_status,
+        public_skills: runState.public_skills,
+        started_at: runState.started_at,
+        source: 'Forge run state; host trace unavailable',
       });
-    if (!observed) return { enriched: false, reason: 'trace-unavailable' };
     const enriched = replaceTelemetry(current, observed);
     if (enriched !== current) fs.writeFileSync(paths.summary, enriched, 'utf8');
     const metadata = readRunState(repo, safe);
@@ -311,12 +339,12 @@ export function enrichRunSummary({ repo, runId, trace, traceFile = null, telemet
       persistRunState(repo, {
         ...metadata,
         telemetry_enriched: true,
-        telemetry_source: observed.source || (traceFile ? `host trace: ${traceFile}` : 'host trace'),
-        ...(traceFile ? { transcript_path: path.resolve(String(traceFile)) } : {}),
+        telemetry_source: observed.source || (observedTraceFile ? `host trace: ${observedTraceFile}` : 'Forge run state'),
+        ...(observedTraceFile ? { transcript_path: path.resolve(String(observedTraceFile)) } : {}),
         telemetry_finished_at: timeSnapshot().utc,
       });
     }
-    return { enriched: true, reason: enriched === current ? 'already-enriched' : 'telemetry-copied' };
+    return { enriched: true, reason: enriched === current ? 'already-enriched' : observedTrace ? 'telemetry-copied' : 'run-state-copied' };
   } catch {
     return { enriched: false, reason: 'enrichment-failed' };
   }

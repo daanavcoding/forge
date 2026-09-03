@@ -348,25 +348,30 @@ function parseSkillEntries(value) {
 
 function summarySkillUsage(summaryText) {
   const lines = String(summaryText || '').split(/\r?\n/);
-  const skillsLine = lines.find((line) => /^\s*-?\s*Skills used\s*:/i.test(line));
-  const internalLine = lines.find((line) => /^\s*-?\s*(?:Internal specialist skills|internal specialists)\s*:/i.test(line));
-  let allValue = skillsLine?.replace(/^\s*-?\s*Skills used\s*:\s*/i, '') || '';
-  let internalValue = internalLine?.replace(/^\s*-?\s*(?:Internal specialist skills|internal specialists)\s*:\s*/i, '') || '';
+  const skillsLine = lines.find((line) => /^\s*-?\s*(?:Skills observed|Skills used)\s*:/i.test(line));
+  const publicLine = lines.find((line) => /^\s*-?\s*Public workflow skills (?:observed|activated)\s*:/i.test(line));
+  const internalLine = lines.find((line) => /^\s*-?\s*(?:Internal specialist skills loaded|Internal specialist skills|internal specialists)\s*:/i.test(line));
+  let allValue = skillsLine?.replace(/^\s*-?\s*(?:Skills observed|Skills used)\s*:\s*/i, '') || '';
+  const publicValue = publicLine?.replace(/^\s*-?\s*Public workflow skills (?:observed|activated)\s*:\s*/i, '') || '';
+  let internalValue = internalLine?.replace(/^\s*-?\s*(?:Internal specialist skills loaded|Internal specialist skills|internal specialists)\s*:\s*/i, '') || '';
   const inlineInternal = /^(.*?);\s*(?:Internal specialist skills|internal specialists)\s*:\s*(.*)$/i.exec(allValue);
   if (inlineInternal) {
     allValue = inlineInternal[1];
     if (!internalValue) internalValue = inlineInternal[2];
   }
   const allEntries = parseSkillEntries(allValue);
+  const publicEntries = parseSkillEntries(publicValue);
   const internalEntries = parseSkillEntries(internalValue);
   const internalNames = new Set(internalEntries.map(({ name }) => name));
   const counts = {};
   for (const { name, count } of [...allEntries, ...internalEntries]) counts[name] = count;
   return {
-    publicNames: allEntries.filter(({ name }) => !internalNames.has(name)).map(({ name }) => name),
+    publicNames: publicEntries.length
+      ? publicEntries.map(({ name }) => name)
+      : allEntries.filter(({ name }) => !internalNames.has(name)).map(({ name }) => name),
     internalNames: [...internalNames],
     counts,
-    reported: Boolean(skillsLine || internalLine),
+    reported: Boolean(skillsLine || publicLine || internalLine),
   };
 }
 
@@ -385,7 +390,7 @@ function observedSkillUsage(injection, summaryText = '') {
     ...summary.publicNames.filter((name) => !mergedInternalSet.has(name)),
   ])];
   const names = [...new Set([...mergedPublicNames, ...mergedInternalNames])];
-  const counts = Object.fromEntries(names.map((skill) => [skill, 1]));
+  const counts = {};
   if (injection?.skill_usage && typeof injection.skill_usage === 'object') {
     for (const [skill, count] of Object.entries(injection.skill_usage)) counts[skill] = count;
   }
@@ -424,12 +429,9 @@ function benchmarkTelemetry({ host, arm, model, effort, total, stats, elapsedMs,
     })
     .join(', ') || 'unavailable';
   const skills = observedSkills || observedSkillUsage(injection);
-  const skillText = Object.entries(skills.counts)
-    .map(([name, count]) => `${name} x${count}`)
-    .join(', ') || 'unavailable; host did not report skills';
-  const internalText = skills.internalNames.length
-    ? `; internal specialists: ${skills.internalNames.join(', ')}`
-    : '';
+  const skillText = skills.names.join(', ') || 'unavailable';
+  const publicSkillText = skills.publicNames.join(', ') || 'unavailable';
+  const internalSkillText = skills.internalNames.join(', ') || 'unavailable';
   return [
     '## Telemetry',
     `- Platform / model / effort: ${host} / ${model || 'unavailable'} / ${effort || 'unavailable'}`,
@@ -438,7 +440,10 @@ function benchmarkTelemetry({ host, arm, model, effort, total, stats, elapsedMs,
     '- Credits: unavailable; the subscription host does not expose billed credits to the session.',
     `- Latency / calls: end-to-end ${elapsedMs} ms; model turns ${stats.turns ?? 'unavailable'}; model calls ${stats.turns ?? 'unavailable'}; tool calls ${stats.tool_calls ?? 'unavailable'}`,
     `- Tools: ${tools}`,
-    `- Skills used: ${skillText}${internalText}${skills.names.length ? ` (observed from ${skills.summaryReported ? 'hook activation and Forge summary' : 'hook activation'})` : ''}`,
+    `- Skills observed: ${skillText}`,
+    `- Public workflow skills observed: ${publicSkillText}`,
+    `- Internal specialist skills loaded: ${internalSkillText}`,
+    `- Skill evidence: ${skills.names.length ? (skills.summaryReported ? 'hook activation and Forge summary' : 'hook activation') : 'unavailable'}`,
     `- Activation / Graphify / hook context: ${arm} / ${graphifyStatus || 'unavailable'} / ${injection?.bytes ?? 'unavailable'} bytes`,
     `- Pricing basis: ${pricingBasis}`,
     `- Data source: ${traceFile}; usage parsed from the completed host trace.`,

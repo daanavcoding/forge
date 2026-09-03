@@ -63,16 +63,24 @@ At terminal exit produce two distinct outputs: an LLM-authored handoff file
 and a normal user-facing answer. The handoff is not the chat response.
 
 - If `run_state.summary` exists, use the normal file-writing tool to write exactly
-  one concise summary directly to that exact path, then verify it exists. Do
-  not invent a path; the runtime owns the run directory.
+  one concise summary directly to that exact path. Then run
+  `node "<plugin-root>/scripts/finalize.mjs" --existing --repo "<repository>" --run-id "<run_id>"`
+  and verify the summary exists. On Codex, the finalizer resolves the exact
+  host transcript from the current session/thread identifier and adds immediate
+  host-owned telemetry. It uses honest run-state-only telemetry only when that
+  transcript is unavailable;
+  the Codex `Stop` hook replaces it when the turn ends, and `SessionEnd` may
+  refresh it later with the complete host trace. Do not invent
+  a path; the runtime owns the run directory.
 - A completed file starts with `# Forge summary`, `status: completed`, and
   `resume: false`, followed by non-empty `## Changes`, `## Verification`,
   `## Review`, `## Limitations`, and `## Verdict` sections.
 - A failed file starts with `# Forge summary`, `status: failed`, and
   `resume: true`, followed by `## Completed work`, `## Failure` with
   `failed_command:` and `error:`, and `## Next resume step` with `next_step:`.
-- Do not add `## Telemetry`: the host owns that section. On Codex `SessionEnd`,
-  a detached local worker may replace only it using observed transcript data.
+- Do not author `## Telemetry`: the deterministic finalizer and host own that
+  section. On Codex `Stop` and `SessionEnd`, a detached local worker may replace
+  only it using observed transcript data.
   It never waits on a model or network; missing or malformed traces leave the
   handoff valid. Manually recovered runs join the transcript by exact random
   `run_id` when no host session identifier exists.

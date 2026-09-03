@@ -36,5 +36,7 @@
 
 - Keep the public manifests, hook declarations, and client adapters aligned
   with the canonical package layout.
+- `forge-commit` defaults to a confirmed feature branch and pull request;
+  direct commits to the default branch require an explicit user instruction.
 - Stage only files belonging to the requested change; preserve unrelated dirty
   work and do not use blanket staging.
