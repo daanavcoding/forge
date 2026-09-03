@@ -11,7 +11,7 @@ server, or hidden network service.
 Task → Plan → Approval → Skills selected → Code → Tests → Review → Handoff
 
 AGENTS.md / CLAUDE.md + Graphify → skill selection
-forge-commit → branch confirmation → verified commit → push → pull request
+forge-commit → branch confirmation → verified commit → push → optional pull request
 ```
 
 ## Why use it?
@@ -101,7 +101,7 @@ Forge exposes only two host-selectable workflows. They live in
 | Public skill | Contains |
 | --- | --- |
 | `forge` | The plan, approval, implementation, verification, review, and handoff workflow. |
-| `forge-commit` | Branch confirmation, context and README maintenance, narrow staging, verified commit, push, and pull request. |
+| `forge-commit` | Branch confirmation, context and README maintenance, narrow staging, verified commit, and push; pull requests are optional. |
 
 The 20 implementation specialists live in
 [`plugins/forge/worker-skills/`](plugins/forge/worker-skills/). They are private
@@ -137,8 +137,10 @@ session alongside the project context.
 `forge-commit` closes the context loop: it updates only the project instructions
 that the repository or active Agent Plugins host has already declared
 applicable. It does not choose a context file from the coding-agent provider.
-By default it checks and proposes a feature branch, waits for confirmation,
-commits and pushes there, then returns the pull-request URL. A direct
+By default it checks and proposes a short, descriptive GitHub-style topic
+branch with a type prefix such as `feat/add-export` or
+`chore/update-dependencies`, waits for confirmation, and commits and pushes
+there. It opens a pull request only when the user asks for one. A direct
 default-branch push requires an explicit user instruction. The next Forge run
 uses the refreshed context to discover the right specialists.
 
