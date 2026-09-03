@@ -21,6 +21,8 @@ import {
 import { PRIVATE_SKILL_CATALOG } from '../worker-skills/catalog.mjs';
 import { ensureRun, writeRunSummary } from './run-state.mjs';
 import { estimateCost, formatTelemetry, telemetryFromTrace } from './telemetry.mjs';
+import { codexTraceContext, locateCodexTranscript } from './codex-trace.mjs';
+import { assertSafeCatalogChange, buildPricingSnapshot, updatePricing, validatePricingSnapshot } from './update-pricing.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-plugin-'));
 const missingGraphify = path.join(tmp, 'missing-graphify');
@@ -62,8 +64,10 @@ assert.deepEqual(
 const portableManifest = JSON.parse(fs.readFileSync(new URL('../plugin.json', import.meta.url), 'utf8'));
 const codexManifest = JSON.parse(fs.readFileSync(new URL('../.codex-plugin/plugin.json', import.meta.url), 'utf8'));
 const claudeManifest = JSON.parse(fs.readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'));
+const pricingSnapshot = JSON.parse(fs.readFileSync(new URL('../data/model-pricing.json', import.meta.url), 'utf8'));
 const repositoryReadmeUrl = new URL('../../../README.md', import.meta.url);
 const repositoryPackageUrl = new URL('../../../package.json', import.meta.url);
+const repositoryPricingWorkflowUrl = new URL('../../../.github/workflows/update-model-pricing.yml', import.meta.url);
 const sourceCheckout = fs.existsSync(repositoryPackageUrl)
   && JSON.parse(fs.readFileSync(repositoryPackageUrl, 'utf8')).name === 'forge-agent-plugin';
 const codexMarketplaceUrl = new URL('../../../.agents/plugins/marketplace.json', import.meta.url);
@@ -76,6 +80,48 @@ assert.equal(codexManifest.version.split('+')[0], portableManifest.version);
 assert.equal(codexManifest.skills, './skills/');
 assert.equal(codexManifest.hooks, undefined);
 assert.equal(fs.existsSync(new URL('../hooks/hooks.json', import.meta.url)), true);
+assert.equal(validatePricingSnapshot(pricingSnapshot), pricingSnapshot);
+assert.ok(Object.keys(pricingSnapshot.providers).length >= 10);
+assert.ok(Object.values(pricingSnapshot.providers).reduce((count, provider) => count + Object.keys(provider.models).length, 0) >= 100);
+const pricingFixture = buildPricingSnapshot({
+  example: {
+    name: 'Example Provider',
+    models: {
+      'example-model': {
+        cost: {
+          input: 1,
+          output: 4,
+          cache_read: 0.1,
+          tiers: [{ tier: { type: 'context', size: 200_000 }, input: 2, output: 6, cache_read: 0.2 }],
+        },
+      },
+      'unpriced-model': { cost: null },
+    },
+  },
+}, { updatedAt: '2026-09-02T00:00:00.000Z' });
+assert.deepEqual(pricingFixture.providers.example.models['example-model'], {
+  input: 1,
+  output: 4,
+  cached_input: 0.1,
+  tiers: [{ context_tokens_at_least: 200_000, input: 2, output: 6, cached_input: 0.2 }],
+});
+assert.equal(pricingFixture.providers.example.models['unpriced-model'], undefined);
+assert.throws(() => buildPricingSnapshot({ example: { models: { unsafe: { cost: { input: -1, output: 1 } } } } }), /non-negative price/);
+const suspiciousPricingFixture = structuredClone(pricingFixture);
+suspiciousPricingFixture.providers.example.models['example-model'].input = 100;
+assert.throws(() => assertSafeCatalogChange(pricingFixture, suspiciousPricingFixture), /suspicious input price change/);
+const suspiciousTierFixture = structuredClone(pricingFixture);
+suspiciousTierFixture.providers.example.models['example-model'].tiers[0].output = 100;
+assert.throws(() => assertSafeCatalogChange(pricingFixture, suspiciousTierFixture), /at 200000\+ tokens/);
+const pricingFixtureFile = path.join(tmp, 'pricing', 'model-pricing.json');
+const pricingFixtureSource = { example: { name: 'Example Provider', models: { model: { cost: { input: 1, output: 2 } } } } };
+assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource, now: new Date('2026-09-02T00:00:00Z') })).changed, true);
+assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource, now: new Date('2026-09-03T00:00:00Z') })).changed, false);
+const pricingFixtureBeforeCheck = fs.readFileSync(pricingFixtureFile, 'utf8');
+const changedPricingFixtureSource = structuredClone(pricingFixtureSource);
+changedPricingFixtureSource.example.models.model.cost.output = 3;
+assert.equal((await updatePricing({ file: pricingFixtureFile, raw: changedPricingFixtureSource, check: true })).changed, true);
+assert.equal(fs.readFileSync(pricingFixtureFile, 'utf8'), pricingFixtureBeforeCheck);
 assert.equal(claudeManifest.name, portableManifest.name);
 assert.equal(claudeManifest.version, portableManifest.version);
 assert.equal(claudeManifest.skills, './skills/');
@@ -86,6 +132,14 @@ if (sourceCheckout) {
   const codexMarketplace = JSON.parse(fs.readFileSync(codexMarketplaceUrl, 'utf8'));
   const claudeMarketplace = JSON.parse(fs.readFileSync(claudeMarketplaceUrl, 'utf8'));
   const repositoryReadme = fs.readFileSync(repositoryReadmeUrl, 'utf8');
+  const repositoryPackage = JSON.parse(fs.readFileSync(repositoryPackageUrl, 'utf8'));
+  const pricingWorkflow = fs.readFileSync(repositoryPricingWorkflowUrl, 'utf8');
+  assert.equal(repositoryPackage.scripts['pricing:update'], 'node plugins/forge/scripts/update-pricing.mjs');
+  assert.equal(repositoryPackage.scripts['pricing:check'], 'node plugins/forge/scripts/update-pricing.mjs --check');
+  assert.match(pricingWorkflow, /cron: "23 7 \* \* 1"/);
+  assert.match(pricingWorkflow, /git add -- plugins\/forge\/data\/model-pricing\.json/);
+  assert.match(pricingWorkflow, /gh pr merge "\$pr_number" --squash --delete-branch/);
+  assert.doesNotMatch(pricingWorkflow, /npm version|plugin\.json|marketplace\.json/);
   assert.equal(codexMarketplace.name, 'forge');
   assert.equal(codexMarketplace.plugins[0].name, 'forge');
   assert.equal(codexMarketplace.plugins[0].source.path, './plugins/forge');
@@ -146,13 +200,12 @@ assert.equal(automaticCodexHooks.automatic, true);
 assert.equal(automaticCodexHooks.hooks[0].enabled, true);
 assert.equal(automaticCodexHooks.hooks[0].trust, 'trusted');
 assert.match(commitSkill, /^---\s+name: forge-commit\s+description:/);
-assert.match(commitSkill, /Generic agents and Codex use only the nearest applicable `AGENTS\.md`/);
-assert.match(commitSkill, /Claude Code uses only the nearest applicable `CLAUDE\.md`/);
+assert.match(commitSkill, /project instructions that the repository or active Agent\s+Plugins host has already declared applicable/);
 assert.match(commitSkill, /FORGE_PROJECT_CONTEXT/);
 assert.match(commitSkill, /stage only\s+those files or hunks/i);
 assert.match(commitSkill, /By default, whenever this skill creates or edits[\s\S]*every prose section it authors or rewrites in that\s+file must be in\s+English only/);
 assert.match(commitSkill, /If the user explicitly requests another language[\s\S]*follow that request/);
-assert.match(commitSkill, /authored or rewritten prose section in `AGENTS\.md`[\s\S]*`CLAUDE\.md` in English only/);
+assert.match(commitSkill, /authored or rewritten prose section in the\s+applicable project-instructions file in English only/);
 assert.match(commitSkill, /authored or rewritten prose section in the\s+canonical `README\.md` in English only/);
 assert.match(commitSkill, /Write project context as durable guidance for a future agent/);
 assert.match(commitSkill, /Do not list specialist skill\s+names/);
@@ -160,6 +213,14 @@ assert.match(commitSkill, /Check the canonical `README\.md` before staging, ever
 assert.match(commitSkill, /If the README is stale for any of those changes, update it before staging/);
 assert.match(commitSkill, /preserve unrelated user edits/);
 assert.match(commitSkill, /brief, descriptive English subject/);
+assert.match(commitSkill, /Default to a feature branch and pull request/);
+assert.match(commitSkill, /`forge\/<task-slug>`/);
+assert.match(commitSkill, /Do not select, create, or prefer an instructions file based on a named\s+coding-agent provider/);
+assert.doesNotMatch(commitSkill, /`codex\/<task-slug>`|Generic agents and Codex|Claude Code uses/);
+assert.match(commitSkill, /git show-ref --verify[\s\S]*git ls-remote --heads/);
+assert.match(commitSkill, /original commit request\s+is not this confirmation/);
+assert.match(commitSkill, /Return the actual pull-request URL/);
+assert.match(commitSkill, /Never merge the pull request unless the user explicitly asks/);
 assert.match(commitInterface, /display_name: "Forge Commit"/);
 assert.match(commitInterface, /review README/);
 assert.match(commitInterface, /default_prompt: .*commit/);
@@ -295,7 +356,8 @@ assert.match(skill, /two distinct outputs[\s\S]*normal user-facing answer/);
 assert.match(skill, /answer the user normally[\s\S]*conclusions/);
 assert.match(skill, /Do not paste the `# Forge summary` document/);
 assert.match(skill, /Summary: \[open the Forge run summary\]/);
-assert.match(skill, /host owns that section/);
+assert.match(skill, /deterministic finalizer and host own that/);
+assert.match(skill, /finalize\.mjs.*--existing/);
 assert.match(skill, /FORGE_PROJECT_CONTEXT/);
 assert.match(skill, /--manual-approved/);
 assert.match(skill, /FORGE_SKILL_DISCOVERY/);
@@ -694,19 +756,34 @@ assert.equal(estimateCost({
   usage: telemetry.usage,
 }).estimated_usd, 0.284);
 assert.equal(estimateCost({
+  platform: 'openai_api',
+  model: 'gpt-5.6-sol',
+  usage: telemetry.usage,
+}).estimated_usd, 5.28);
+assert.equal(estimateCost({
+  platform: 'anthropic_api',
+  model: 'claude-opus-4-5',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).estimated_usd, 5);
+assert.equal(estimateCost({
+  platform: 'google_api',
+  model: 'gemini-2.5-flash',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).estimated_usd, 0.3);
+assert.equal(estimateCost({
   platform: 'anthropic_api',
   model: 'custom-model',
   usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
   pricing: { input: 3, output: 15, source: 'vendor rate card', as_of: '2026-08-01' },
 }).estimated_usd, 3);
 assert.match(formatTelemetry({ model: 'unknown-model' }), /Cost: unavailable \(pricing unavailable for this exact model\)/);
-assert.match(formatTelemetry({ model: 'gpt-5.6', usage: telemetry.usage }), /Cost: unavailable \(pricing unavailable for this exact model\)/);
+assert.match(formatTelemetry({ model: 'gpt-5.6', usage: telemetry.usage }), /API-equivalent USD/);
+assert.match(formatTelemetry({ model: 'gpt-5.6-sol', usage: telemetry.usage }), /snapshot .* from https:\/\/models\.dev\/api\.json/);
 assert.match(formatTelemetry({ model: 'gpt-5.6-luna', usage: { input_tokens: 3, cached_input_tokens: 1, output_tokens: 2 } }), /total unavailable/);
 assert.match(formatTelemetry({ model: 'gpt-5.6-luna', usage: { input_tokens: 3, output_tokens: 2 } }), /cached input usage unavailable/);
-assert.match(formatTelemetry({}), /Skills used: forge x1/);
-assert.match(formatTelemetry({ skills: ['forge'], internal_skills: ['node'] }), /Skills used: forge x1, node x1/);
-assert.match(formatTelemetry({ skills: ['forge'], internal_skills: ['node'] }), /Internal specialist skills: node/);
-assert.match(formatTelemetry({}), /Loaded skills: 1 \(forge\)/);
+assert.doesNotMatch(formatTelemetry({}), /Skills:|Host limits:|Duration:|Tokens:|Cost:/);
+assert.match(formatTelemetry({ public_skills: ['forge'], internal_skills: ['node'] }), /Skills: public forge; internal node/);
+assert.doesNotMatch(formatTelemetry({ public_skills: ['forge'] }), /forge x1/);
 
 const sessionTrace = path.join(tmp, 'session-transcript.jsonl');
 const sessionId = 'session-telemetry-fixture';
@@ -742,13 +819,42 @@ const sessionSummary = [
 ].join('\n');
 assert.equal(writeRunSummary({ repo: tmp, runId: sessionRunId, summary: sessionSummary }), true);
 assert.doesNotMatch(fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8'), /## Telemetry/);
+const immediateFinalize = spawnSync(process.execPath, [
+  fileURLToPath(new URL('./finalize.mjs', import.meta.url)),
+  '--existing', '--repo', tmp, '--run-id', sessionRunId,
+], {
+  encoding: 'utf8',
+  windowsHide: true,
+  env: { ...process.env, CODEX_HOME: '', CODEX_SESSION_ID: '', CODEX_THREAD_ID: '', USERPROFILE: path.join(tmp, 'no-codex-home') },
+});
+assert.equal(immediateFinalize.status, 0, immediateFinalize.stderr);
+assert.deepEqual(JSON.parse(immediateFinalize.stdout), {
+  written: true,
+  run_id: sessionRunId,
+  telemetry_enriched: true,
+  telemetry_reason: 'run-state-copied',
+});
+const immediateSummary = fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8');
+assert.match(immediateSummary, /## Telemetry/);
+assert.match(immediateSummary, /Skills: public forge; internal unavailable/);
+assert.match(immediateSummary, /Data source: Forge run state; host trace unavailable/);
 fs.writeFileSync(sessionTrace, [
+  JSON.stringify({ timestamp: '2026-08-13T09:00:00.000Z', type: 'turn_context', payload: { turn_id: 'fixture-turn' } }),
   JSON.stringify({
     timestamp: '2026-08-13T09:00:00.000Z',
     type: 'event_msg',
     payload: {
       type: 'thread_settings_applied',
       thread_settings: { model: 'gpt-5.6-luna', reasoning_effort: 'max' },
+    },
+  }),
+  JSON.stringify({
+    timestamp: '2026-08-13T09:00:00.000Z',
+    type: 'response_item',
+    payload: {
+      type: 'message',
+      role: 'user',
+      content: [{ type: 'input_text', text: '[$openai:openai-docs](C:\\plugin\\skills\\openai-docs\\SKILL.md)' }],
     },
   }),
   JSON.stringify({
@@ -765,6 +871,11 @@ fs.writeFileSync(sessionTrace, [
     type: 'event_msg',
     payload: {
       type: 'token_count',
+      rate_limits: {
+        plan_type: 'plus',
+        primary: { used_percent: 45, window_minutes: 300, resets_at: 1788381718 },
+        credits: { has_credits: false, unlimited: false, balance: '0' },
+      },
       info: {
         total_token_usage: {
           input_tokens: 100,
@@ -778,32 +889,61 @@ fs.writeFileSync(sessionTrace, [
   }),
   JSON.stringify({ timestamp: '2026-08-13T09:00:02.000Z', type: 'event_msg', payload: { type: 'turn_completed' } }),
 ].join('\n') + '\n', 'utf8');
+const fakeCodexHome = path.join(tmp, 'codex-home');
+const resolvedTrace = path.join(fakeCodexHome, 'sessions', '2026', '08', '13', `rollout-${sessionId}.jsonl`);
+fs.mkdirSync(path.dirname(resolvedTrace), { recursive: true });
+fs.copyFileSync(sessionTrace, resolvedTrace);
+const fakeCodexEnv = { CODEX_HOME: fakeCodexHome, CODEX_SESSION_ID: sessionId, CODEX_THREAD_ID: '' };
+assert.equal(locateCodexTranscript(fakeCodexEnv), resolvedTrace);
+assert.deepEqual(codexTraceContext(fakeCodexEnv), { session_id: sessionId, transcript_path: resolvedTrace });
+const environmentFinalize = spawnSync(process.execPath, [
+  fileURLToPath(new URL('./finalize.mjs', import.meta.url)),
+  '--existing', '--repo', tmp, '--run-id', sessionRunId,
+], { encoding: 'utf8', windowsHide: true, env: { ...process.env, ...fakeCodexEnv } });
+assert.equal(environmentFinalize.status, 0, environmentFinalize.stderr);
+assert.equal(JSON.parse(environmentFinalize.stdout).telemetry_reason, 'telemetry-copied');
+const environmentSummary = fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8');
+assert.match(environmentSummary, /Model: codex \/ openai \/ gpt-5\.6-luna \/ effort max/);
+assert.match(environmentSummary, /Data source: host trace:/);
+fs.unlinkSync(resolvedTrace);
+const preservedFinalize = spawnSync(process.execPath, [
+  fileURLToPath(new URL('./finalize.mjs', import.meta.url)),
+  '--existing', '--repo', tmp, '--run-id', sessionRunId,
+], { encoding: 'utf8', windowsHide: true, env: { ...process.env, ...fakeCodexEnv } });
+assert.equal(JSON.parse(preservedFinalize.stdout).telemetry_reason, 'already-enriched');
+assert.equal(fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8'), environmentSummary);
+const archivedTrace = path.join(fakeCodexHome, 'archived_sessions', `rollout-${sessionId}.jsonl`);
+fs.mkdirSync(path.dirname(archivedTrace), { recursive: true });
+fs.copyFileSync(sessionTrace, archivedTrace);
+assert.equal(locateCodexTranscript(fakeCodexEnv), archivedTrace);
 const parsedTraceTelemetry = telemetryFromTrace(fs.readFileSync(sessionTrace, 'utf8'), {
-  state: { model: 'gpt-5.6-luna', host: 'codex' },
+  state: { model: 'gpt-5.6-luna', host: 'codex', public_skills: ['forge'] },
 });
 assert.equal(parsedTraceTelemetry.usage.total_tokens, 120);
 assert.equal(parsedTraceTelemetry.token_count, 120);
 assert.equal(parsedTraceTelemetry.duration_ms, 2_000);
 assert.equal(parsedTraceTelemetry.model, 'gpt-5.6-luna');
 assert.equal(parsedTraceTelemetry.reasoning_effort, 'max');
+assert.equal(parsedTraceTelemetry.turns, 1);
+assert.equal(parsedTraceTelemetry.model_calls, 1);
 assert.deepEqual(parsedTraceTelemetry.tools, { exec: 1 });
+assert.deepEqual(parsedTraceTelemetry.public_skills, ['forge', 'openai-docs']);
 assert.deepEqual(parsedTraceTelemetry.internal_skills, ['node', 'rag']);
 const sessionEndResult = handleSessionEnd({ cwd: tmp, session_id: sessionId, transcript_path: sessionTrace });
 assert.deepEqual(sessionEndResult, { processed: 1, enriched: 1 });
 const enrichedSummary = fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8');
-assert.match(enrichedSummary, /Token count: 120/);
 assert.match(enrichedSummary, /input 100; cached 40; output 20/);
-assert.match(enrichedSummary, /Latency: end-to-end 2000 ms/);
-assert.match(enrichedSummary, /Credits: unavailable/);
+assert.match(enrichedSummary, /Duration: 2000 ms/);
+assert.match(enrichedSummary, /Host limits: plan plus; credit balance 0; primary 45% used, 300 min window/);
 assert.doesNotMatch(enrichedSummary, /Tokens: unavailable/);
-assert.match(enrichedSummary, /Skills used: forge x1/);
-assert.match(enrichedSummary, /Internal specialist skills: node/);
-assert.match(enrichedSummary, /Tools: exec x1/);
+assert.match(enrichedSummary, /Skills: public forge, openai-docs; internal node, rag/);
+assert.doesNotMatch(enrichedSummary, /(?:forge|node|openai-docs|rag) x1/);
+assert.doesNotMatch(enrichedSummary, /Tool calls:|Tools:|Skill evidence:|Activation \/ Graphify:|Started \/ finished:|Token count:/);
 assert.equal((enrichedSummary.match(/## Telemetry/g) || []).length, 1);
-const replacedSummary = enrichedSummary.replace('Tools: exec x1', 'Tools: stale x99');
+const replacedSummary = enrichedSummary.replace('Duration: 2000 ms', 'Duration: stale');
 fs.writeFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), replacedSummary, 'utf8');
 assert.deepEqual(handleSessionEnd({ cwd: tmp, session_id: sessionId, transcript_path: sessionTrace }), { processed: 1, enriched: 1 });
-assert.match(fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8'), /Tools: exec x1/);
+assert.match(fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8'), /Duration: 2000 ms/);
 const missingTraceResult = handleSessionEnd({ cwd: tmp, session_id: sessionId, transcript_path: path.join(tmp, 'missing.jsonl') });
 assert.deepEqual(missingTraceResult, { processed: 1, enriched: 0 });
 
@@ -852,6 +992,8 @@ assert.match(
 
 const pluginHooks = JSON.parse(fs.readFileSync(new URL('../hooks/hooks.json', import.meta.url), 'utf8')).hooks;
 assert.equal(pluginHooks.PreToolUse, undefined);
+assert.equal(pluginHooks.Stop.length, 1);
+assert.match(pluginHooks.Stop[0].hooks[0].command, /session-end\.mjs/);
 assert.equal(pluginHooks.SessionEnd.length, 1);
 assert.match(pluginHooks.SessionEnd[0].hooks[0].command, /session-end\.mjs/);
 assert.match(pluginHooks.SessionEnd[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
@@ -898,6 +1040,10 @@ for (const client of ['claude', 'opencode', 'cursor', 'antigravity']) {
     ? path.join(installed.target, 'skills', 'forge-commit', 'SKILL.md')
     : path.join(path.dirname(installed.target), 'forge-commit', 'SKILL.md');
   assert.equal(fs.existsSync(installedCommit), true);
+  if (installed.kind === 'plugin') {
+    assert.equal(fs.existsSync(path.join(installed.target, 'data', 'model-pricing.json')), true);
+    assert.equal(fs.existsSync(path.join(installed.target, 'scripts', 'update-pricing.mjs')), true);
+  }
   if (client === 'cursor' && process.env.FORGE_INSTALLED_SELFCHECK !== '1') {
     const installedCheck = spawnSync(process.execPath, [path.join(installed.target, 'scripts/selfcheck.mjs')], {
       encoding: 'utf8',
@@ -926,6 +1072,8 @@ const managed = stageManagedBundle({ managedDir: managedHome });
 assert.equal(fs.existsSync(managed.dispatcher), true);
 assert.equal(fs.existsSync(managed.current_file), true);
 assert.equal(fs.existsSync(path.join(managed.version_root, 'scripts', 'hook.mjs')), true);
+assert.equal(fs.existsSync(path.join(managed.version_root, 'scripts', 'update-pricing.mjs')), true);
+assert.equal(fs.existsSync(path.join(managed.version_root, 'data', 'model-pricing.json')), true);
 assert.equal(fs.existsSync(path.join(managed.version_root, '.claude-plugin')), false);
 assert.equal(fs.existsSync(path.join(managed.version_root, 'claude')), false);
 assert.equal(fs.existsSync(path.join(managed.version_root, 'scripts', 'claude-hook.mjs')), false);

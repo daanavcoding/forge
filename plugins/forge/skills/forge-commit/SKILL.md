@@ -1,20 +1,22 @@
 ---
 name: forge-commit
-description: Create a verified git commit while keeping host-specific project context and public documentation current. Use when the user asks to commit, save, or record completed repository changes, or asks to update AGENTS.md or CLAUDE.md before committing.
+description: Create a verified branch, commit, push, and pull request while keeping repository context and public documentation current. Use when the user asks to commit, push, save, or record completed repository changes, or asks to update applicable project instructions before committing.
 ---
 
 # Forge Commit
 
 Create a commit only when the user requests one. Run this skill after the
 implementation has green focused verification; never commit merely because
-the work is locally plausible.
+the work is locally plausible. Default to a feature branch and pull request,
+not a direct commit to the repository's default branch.
 
-By default, whenever this skill creates or edits a `README*.md`, `AGENTS.md`, or
-`CLAUDE.md`, every prose section it authors or rewrites in that file must be in
-English only. If the user explicitly requests another language for that file or
-change, follow that request. Do not add unrequested Spanish or bilingual prose.
-Preserve code, commands, identifiers, quoted user text, untouched existing text,
-and intentionally localized variants such as `README.es.md`.
+By default, whenever this skill creates or edits a `README*.md` or an applicable
+project-instructions file, every prose section it authors or rewrites in that
+file must be in English only. If the user explicitly requests another language
+for that file or change, follow that request. Do not add unrequested Spanish or
+bilingual prose. Preserve code, commands, identifiers, quoted user text,
+untouched existing text, and intentionally localized variants such as
+`README.es.md`.
 
 ## Workflow
 
@@ -28,16 +30,41 @@ and intentionally localized variants such as `README.es.md`.
    - If the requested scope cannot be separated safely, stop and report the
      boundary instead of staging or committing unrelated work.
 
-2. Refresh the one applicable project-context file before staging.
+2. Choose the branch and obtain confirmation before mutating Git state.
 
-   - Generic agents and Codex use only the nearest applicable `AGENTS.md`.
-   - Claude Code uses only the nearest applicable `CLAUDE.md`.
+   - Resolve the remote and its default branch. A generic request such as
+     "commit and push" does not authorize committing directly to that branch;
+     do so only when the user explicitly names or requires the default branch.
+   - Reuse the current non-default branch only when it clearly belongs to this
+     task. Otherwise propose a short repository-compliant name, using
+     `forge/<task-slug>` when no stronger convention exists.
+   - Before proposing it, check the exact branch name both locally and remotely
+     (`git show-ref --verify refs/heads/<branch>` and `git ls-remote --heads
+     <remote> refs/heads/<branch>`). Reuse an existing task branch only when it
+     is clearly safe; otherwise choose a non-conflicting name. Never overwrite
+     or force-update an existing branch.
+   - Tell the user, in their language, the exact action: "I will create [or
+     reuse] `<branch>`, commit the scoped changes, push it to `<remote>`, and
+     open a pull request into `<base>`." Then stop. The original commit request
+     is not this confirmation; wait for explicit approval in a later turn.
+   - Only after that approval may you create or switch branch, stage, commit,
+     push, and open the pull request. If the user explicitly requires a direct
+     default-branch push, follow it and state that no pull request can represent
+     a change already committed to its base.
+
+3. Refresh the one applicable project-context file before staging.
+
+   - Use only the project instructions that the repository or active Agent
+     Plugins host has already declared applicable to the changed scope.
+   - Do not select, create, or prefer an instructions file based on a named
+     coding-agent provider. If no applicable context file is declared, leave
+     project context unchanged and report that decision.
    - In a hierarchy, update the nearest file that owns the changed area. If
      the applicable file does not exist, create it at the appropriate project
-     root. Never create or update both files for one host task.
+     root. Never create or update multiple competing context files for one task.
    - If the hook supplied `FORGE_PROJECT_CONTEXT`, reuse that delivered block
-     as the context read. Do not deliver, quote, or manually reopen the file,
-     and never read the other client's file.
+     as the context read. Do not deliver, quote, or manually reopen its source
+     file.
    - Never read or copy secrets or values from `.env` or `appsettings.json`.
 
    Write project context as durable guidance for a future agent, not as a
@@ -60,13 +87,14 @@ and intentionally localized variants such as `README.es.md`.
      the file is already accurate and the diff changes no application facts,
      leave it unchanged. If it is missing, materially stale, or unclear, write
      the smallest accurate improvement needed.
-   - By default, write every authored or rewritten prose section in `AGENTS.md`
-     or `CLAUDE.md` in English only. If the user explicitly requests another
-     language, use that language consistently for the requested change. Do not
-     add an unrequested language. When translating an existing section,
-     preserve commands, paths, identifiers, and semantics exactly.
+   - By default, write every authored or rewritten prose section in the
+     applicable project-instructions file in English only. If the user
+     explicitly requests another language, use that language consistently for
+     the requested change. Do not add an unrequested language. When translating
+     an existing section, preserve commands, paths, identifiers, and semantics
+     exactly.
 
-3. Check the canonical `README.md` before staging, every time.
+4. Check the canonical `README.md` before staging, every time.
 
    - Inspect the repository's root `README.md`, its working-tree diff, and its
      staged diff when present. If no canonical `README.md` exists, record that
@@ -86,7 +114,7 @@ and intentionally localized variants such as `README.es.md`.
      an unrequested language, while preserving intentionally localized README
      variants.
 
-4. Verify the final content and stage narrowly.
+5. Verify the final content and stage narrowly.
 
    - Review the context-file diff, the README decision and diff, and the full
      intended staged diff. Use `git diff --check` and the repository's focused
@@ -97,11 +125,19 @@ and intentionally localized variants such as `README.es.md`.
    - Do not proceed while verification is failing or while the staged diff
      contains unrelated changes.
 
-5. Create and report the commit.
+6. Create the commit, push, and open the pull request.
 
    - Use a brief, descriptive English subject in the imperative mood.
    - Do not amend, force-push, or alter unrelated commits unless the user
      explicitly asks.
-   - Report the commit hash, files or context document created or updated,
-     whether `README.md` was updated or left unchanged after review, and the
-     verification command that passed.
+   - Push the confirmed feature branch with upstream tracking and verify the
+     remote ref. Never merge the pull request unless the user explicitly asks.
+   - Find an existing pull request for the branch first; otherwise create one
+     with the available repository-hosting CLI or API, targeting the confirmed
+     base.
+     Return the actual pull-request URL. If creation is unavailable, report the
+     blocker and provide the hosting service's "create pull request" link,
+     clearly labeled as a creation link rather than an existing pull request.
+   - Report the branch, commit hash, pull-request URL, files or context document
+     created or updated, whether `README.md` was updated or left unchanged, and
+     the verification command that passed.

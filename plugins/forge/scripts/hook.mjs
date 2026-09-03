@@ -3,9 +3,10 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { approveSessionRun, ensureRun, timeSnapshot } from './run-state.mjs';
+import { approveSessionRun, ensureRun, recordRunTelemetryContext, timeSnapshot } from './run-state.mjs';
 import { prepareGraphify } from './graphify.mjs';
 import { PRIVATE_SKILL_CATALOG } from '../worker-skills/catalog.mjs';
+import { codexTraceContext } from './codex-trace.mjs';
 
 const MARKER = /^(?:\$(?<dollar>forge)|\/(?:(?<slash>forge)|forge:(?<skill>forge)))(?:\s+(?<task>[\s\S]*))?$/i;
 const PLUGIN_ATTACHMENT = /^\[\$forge:(?<skill>forge)\]\([^\r\n)]*\)\s*(?<task>[\s\S]*)$/i;
@@ -252,6 +253,21 @@ export function handle(payload = {}, dependencies = {}) {
       status: 'unavailable',
       fallback_reason: 'Graphify was not executed for this context',
     };
+  if (runState?.run_id) {
+    const recordedState = recordRunTelemetryContext({
+      repo,
+      runId: runState.run_id,
+      publicSkills: ['forge'],
+      graphifyStatus: graphifyStatus.status,
+    });
+    if (recordedState) {
+      runState = {
+        ...runState,
+        public_skills: recordedState.public_skills,
+        graphify_status: recordedState.graphify_status,
+      };
+    }
+  }
   const graphifyEvidence = graphifyStatus.status === 'ready'
     ? boundUtf8(String(graphify?.evidence || '').trim() || '(no results)', MAX_GRAPHIFY_CONTEXT_BYTES)
     : '(Graphify evidence unavailable; continue with native host tools.)';
@@ -280,7 +296,7 @@ export function handle(payload = {}, dependencies = {}) {
     skillCatalog,
     `After selection, read and apply only the selected SKILL.md bodies once from PRIVATE_SKILL_ROOT: ${privateSkillRoot}. Do not read bodies for unselected skills or reread a selected body.`,
     `The project context file describes the application and architecture; it must not be a list of skill names. If the supplied ${projectContextFile} block says the file is missing, continue discovery from the repository and create it during the requested commit step.`,
-    'Record the selected skill names and short evidence in the Forge summary telemetry.',
+    'Read each selected SKILL.md through a visible host tool call so the deterministic finalizer can record it. Do not author telemetry values yourself.',
   ].join('\n');
   const facts = {
     forge_plugin: PLUGIN_VERSION,
@@ -369,6 +385,15 @@ async function main() {
       ...payload,
       manual_approval: true,
       cwd: cwdIndex >= 0 && process.argv[cwdIndex + 1] ? process.argv[cwdIndex + 1] : process.cwd(),
+    };
+  }
+  if (!payload.session_id || !payload.transcript_path) {
+    const context = codexTraceContext();
+    payload = {
+      ...payload,
+      session_id: payload.session_id || context.session_id,
+      transcript_path: payload.transcript_path || context.transcript_path,
+      model: payload.model || process.env.CODEX_MODEL || null,
     };
   }
   process.stdout.write(JSON.stringify(handle(payload)));

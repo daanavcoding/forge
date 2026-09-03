@@ -10,8 +10,11 @@ This document defines the current public workflow contract.
   specialist catalogue lives under
   `plugins/forge/worker-skills/`, outside the host-discovered skills path.
 - `forge-commit` is a separate public skill discoverable from natural-language
-  commit requests. It owns host-specific context refresh, narrow staging, final
-  verification, and commit creation; the main Forge skill only delegates to it.
+  commit requests. It owns branch selection and confirmation, declared project
+  context refresh, narrow staging, final verification, commit, push, and pull
+  request creation; the main Forge skill only delegates to it. It does not
+  select project instructions from a coding-agent provider. Direct commits to
+  the default branch require an explicit user instruction.
 - On explicit activation the hook reads and injects one host-specific project
   context block: `AGENTS.md` for generic agents/Codex or `CLAUDE.md` for
   Claude. Forge reuses that block without rereading or delivering it again.
@@ -29,10 +32,11 @@ This document defines the current public workflow contract.
   count, and SHA-256 in the discovery block and facts. Missing blocks indicate
   that the current plugin hook was not loaded or trusted; they do not prove
   that the private catalogue is absent.
-- `internal_skills`, `loaded_skills`, and `skill_usage` are observed-session
-  telemetry/selection fields reported by the Forge summary, not a public host
-  skill list. Hook telemetry reports only public activation skills and the
-  selected host-context file.
+- Summary telemetry distinguishes public workflow skills observed through host
+  activation, attachments, or explicit skill-file reads,
+  private specialist `SKILL.md` files observed in tool calls, and the evidence
+  for each name. It does not claim that a loaded skill was followed or invent
+  usage counts. Unknown skill data remains `unavailable`.
 - The hook has no fixed byte or file-count cutoff. It keeps relevant files and
   manifests explicit and represents unrelated areas as hierarchical directory
   counts. This controls initial context by relevance and structure.
@@ -62,11 +66,23 @@ This document defines the current public workflow contract.
 - Graphify subprocesses use `shell:false`, bounded output, and a timeout. Forge
   has no `PreToolUse` denial hook; activation persists `run.json` and the
   terminal summary is the run record used by `resume`.
-- The main Forge skill writes the model-authored terminal handoff and does not
-  write `## Telemetry`. A Codex `SessionEnd` hook launches a detached, local,
-  fail-open worker that reads the host transcript and creates the telemetry
-  section from observed model, token, cost, latency, turn, call, activation,
-  and timestamp data, including host-reported credits when available. Missing
-  or malformed traces leave the handoff valid without that section. The final
-  chat is the normal user-facing answer followed by a link to the persisted
-  file.
+- The main Forge skill writes the model-authored terminal handoff and then runs
+  the deterministic finalizer. It immediately creates `## Telemetry` from the
+  available host transcript. On Codex, ordinary tool commands expose the
+  current session/thread identifier, which the finalizer resolves to the exact
+  host-owned rollout file without scanning transcript contents. It falls back
+  to honest run-state facts only when that exact transcript is unavailable.
+  A Codex `Stop` hook launches a detached, local, fail-open
+  worker that replaces that section when the turn ends; `SessionEnd` refreshes
+  it again when the main thread actually closes.
+  The summary exposes only decision-useful telemetry: provider/model/effort,
+  token categories, API-equivalent cost with pricing provenance, elapsed time,
+  host rate-limit windows and credit balance, observed public/private skills,
+  and the telemetry source. Host-reported credits used are included only when
+  available. The final chat remains a normal user-facing answer followed by a
+  summary link.
+- API-equivalent costs use the bundled, generated Models.dev snapshot. Runtime
+  hooks and finalizers never access the network. Lookup is provider-aware and
+  exact-model-only, with a small OpenAI fallback for damaged packages. A
+  scheduled GitHub workflow validates and merges pricing-only changes without
+  changing a plugin version; anomalous changes stop for manual review.

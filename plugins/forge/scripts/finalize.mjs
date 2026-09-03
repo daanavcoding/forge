@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 import fs from 'node:fs';
 import path from 'node:path';
+import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
 import { enrichRunSummary, writeRunSummary } from './run-state.mjs';
+import { codexTraceContext } from './codex-trace.mjs';
 
 // This adapter persists text already authored by the model, then makes one
 // optional, fail-open pass that copies observed host telemetry into it.
@@ -14,6 +16,30 @@ async function readInput() {
 
 export async function main() {
   try {
+    const { values } = parseArgs({
+      options: {
+        existing: { type: 'boolean', default: false },
+        repo: { type: 'string' },
+        'run-id': { type: 'string' },
+      },
+      strict: false,
+    });
+    if (values.existing) {
+      const repo = path.resolve(values.repo || process.cwd());
+      const context = codexTraceContext();
+      const enrichment = enrichRunSummary({
+        repo,
+        runId: values['run-id'],
+        traceFile: context.transcript_path,
+      });
+      process.stdout.write(`${JSON.stringify({
+        written: enrichment.enriched,
+        run_id: values['run-id'] || null,
+        telemetry_enriched: enrichment.enriched,
+        telemetry_reason: enrichment.reason,
+      })}\n`);
+      return;
+    }
     const payload = await readInput();
     const repo = path.resolve(payload?.repo || process.cwd());
     const written = writeRunSummary({
