@@ -60,18 +60,23 @@ Every activation persists `.forge/runs/<run_id>/run.json` and supplies the
 summary path in `run_state`. At terminal exit the main Forge skill writes one
 completed or failed model-authored handoff directly to that path when a host
 hook supplies run state. The skill does not write `## Telemetry`. `resume` reads
-the injected failed summary and continues that run. A Codex `SessionEnd` hook
-then launches a detached local worker that makes one best-effort pass over the
-transcript and creates the `## Telemetry` section from observed values. The
-final chat is the normal user-facing answer followed by a link to the
-persisted file, not the summary pasted as the only output.
+the injected failed summary and continues that run. Codex and Claude lifecycle
+hooks launch a detached local worker that makes one best-effort pass over the
+host transcript and creates the `## Telemetry` section from observed values;
+other coding agents can call the same fail-open adapter with their transcript
+payload. The final chat is the normal user-facing answer followed by a link to
+the persisted file, not the summary pasted as the only output.
 Forge never launches a nested host or a model judge.
 
 The host-generated telemetry section may include compact execution telemetry
 when the host exposes it: platform/model/effort, token breakdown, cost
 estimate, duration/latency, turn and call counts, per-tool usage, activation,
-and timestamps. Forge labels subscription cost as API-equivalent and leaves
-the actual billed amount unavailable; it never manufactures missing usage. The
+and timestamps. Pricing resolves the observed provider first, then an explicit
+`provider/model` model namespace, then a first-party default such as Codex →
+OpenAI or Claude Code → Anthropic. OpenCode and other multi-provider clients
+must expose their route explicitly; Forge leaves ambiguous pricing unavailable.
+Forge labels subscription cost as API-equivalent and leaves the actual billed
+amount unavailable; it never manufactures missing usage. The
 fail-open SessionEnd worker writes observed token counts, latency, and
 host-reported credits after the model turn. If the transcript is absent or
 malformed, the handoff remains valid without a telemetry section. The

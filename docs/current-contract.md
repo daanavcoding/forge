@@ -68,13 +68,15 @@ This document defines the current public workflow contract.
   terminal summary is the run record used by `resume`.
 - The main Forge skill writes the model-authored terminal handoff and then runs
   the deterministic finalizer. It immediately creates `## Telemetry` from the
-  available host transcript. On Codex, ordinary tool commands expose the
-  current session/thread identifier, which the finalizer resolves to the exact
-  host-owned rollout file without scanning transcript contents. It falls back
-  to honest run-state facts only when that exact transcript is unavailable.
-  A Codex `Stop` hook launches a detached, local, fail-open
-  worker that replaces that section when the turn ends; `SessionEnd` refreshes
-  it again when the main thread actually closes.
+  available host transcript. The finalizer prefers the transcript path persisted
+  by the active host adapter. For legacy Codex runs without that path, ordinary
+  Codex tool commands expose the current session/thread identifier, which the
+  finalizer resolves to the exact host-owned rollout file without scanning
+  transcript contents. Claude and generic agents are not sent through the Codex
+  resolver. It falls back to honest run-state facts only when that exact
+  transcript is unavailable. Codex and Claude `Stop` hooks launch a detached,
+  local, fail-open worker that replaces that section when the turn ends;
+  `SessionEnd` refreshes it again when the main thread actually closes.
   The summary exposes only decision-useful telemetry: provider/model/effort,
   token categories, API-equivalent cost with pricing provenance, elapsed time,
   host rate-limit windows and credit balance, observed public/private skills,
@@ -82,7 +84,11 @@ This document defines the current public workflow contract.
   available. The final chat remains a normal user-facing answer followed by a
   summary link.
 - API-equivalent costs use the bundled, generated Models.dev snapshot. Runtime
-  hooks and finalizers never access the network. Lookup is provider-aware and
-  exact-model-only, with a small OpenAI fallback for damaged packages. A
-  scheduled GitHub workflow validates and merges pricing-only changes without
-  changing a plugin version; anomalous changes stop for manual review.
+  hooks and finalizers never access the network. Lookup resolves an observed
+  provider first, then an explicit `provider/model` namespace, then the
+  official provider default for first-party agents such as Codex → OpenAI and
+  Claude Code → Anthropic. Ambiguous agents do not guess a provider. The
+  summary records the selected route and, where known, the official provider
+  rate-card reference. A scheduled GitHub workflow validates and merges
+  pricing-only changes without changing a plugin version; anomalous changes
+  stop for manual review.

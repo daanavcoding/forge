@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
-import { enrichRunSummary, writeRunSummary } from './run-state.mjs';
+import { enrichRunSummary, readRunState, writeRunSummary } from './run-state.mjs';
 import { codexTraceContext } from './codex-trace.mjs';
 
 // This adapter persists text already authored by the model, then makes one
@@ -26,11 +26,18 @@ export async function main() {
     });
     if (values.existing) {
       const repo = path.resolve(values.repo || process.cwd());
-      const context = codexTraceContext();
+      const runState = readRunState(repo, values['run-id']);
+      // The run state is the host-neutral source of identity. Only consult
+      // Codex's environment resolver for legacy Codex runs that predate the
+      // persisted transcript path; Claude and generic agents must never be
+      // pointed at a Codex trace by default.
+      const context = runState?.host === 'codex' && !runState.transcript_path
+        ? codexTraceContext()
+        : {};
       const enrichment = enrichRunSummary({
         repo,
         runId: values['run-id'],
-        traceFile: context.transcript_path,
+        traceFile: runState?.transcript_path || context.transcript_path,
       });
       process.stdout.write(`${JSON.stringify({
         written: enrichment.enriched,
