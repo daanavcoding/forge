@@ -92,10 +92,25 @@ function boundUtf8(value, maxBytes) {
 }
 
 function hostName(payload = {}) {
-  const value = String(payload.host || process.env.FORGE_HOST || 'codex').toLowerCase();
+  const explicit = payload.host || process.env.FORGE_HOST;
+  const value = String(explicit
+    || (process.argv.includes('--codex-only') ? 'codex' : null)
+    || (process.env.CLAUDE_PLUGIN_ROOT && !process.env.PLUGIN_ROOT ? 'claude' : null)
+    || (process.env.CODEX_SESSION_ID || process.env.CODEX_THREAD_ID ? 'codex' : 'generic')).toLowerCase();
   if (value.includes('claude')) return 'claude';
   if (value.includes('codex')) return 'codex';
+  if (value.includes('gemini')) return 'gemini';
+  if (value.includes('opencode')) return 'opencode';
+  if (value.includes('cursor')) return 'cursor';
+  if (value.includes('antigravity')) return 'antigravity';
   return 'generic';
+}
+
+function argumentValue(name) {
+  const exactIndex = process.argv.indexOf(name);
+  if (exactIndex >= 0 && process.argv[exactIndex + 1]) return process.argv[exactIndex + 1];
+  const prefix = process.argv.find((argument) => argument.startsWith(`${name}=`));
+  return prefix ? prefix.slice(name.length + 1) || null : null;
 }
 
 function readProjectContext(repo, fileName) {
@@ -379,15 +394,26 @@ async function main() {
   for await (const chunk of process.stdin) raw += chunk;
   let payload = {};
   try { payload = JSON.parse(raw); } catch { /* Fail open on non-JSON input. */ }
-  if (process.argv.includes('--manual-approved')) {
-    const cwdIndex = process.argv.indexOf('--cwd');
+  const manualApproved = process.argv.includes('--manual-approved');
+  const cliHost = argumentValue('--host');
+  const cliSessionId = argumentValue('--session-id');
+  const cliTranscriptPath = argumentValue('--transcript-path');
+  const cliModel = argumentValue('--model');
+  if (manualApproved || cliHost || cliSessionId || cliTranscriptPath || cliModel) {
+    const cliCwd = argumentValue('--cwd');
     payload = {
       ...payload,
-      manual_approval: true,
-      cwd: cwdIndex >= 0 && process.argv[cwdIndex + 1] ? process.argv[cwdIndex + 1] : process.cwd(),
+      ...(manualApproved ? { manual_approval: true } : {}),
+      ...(cliCwd ? { cwd: cliCwd } : manualApproved ? { cwd: process.cwd() } : {}),
+      ...(cliHost ? { host: cliHost } : {}),
+      ...(cliSessionId ? { session_id: cliSessionId } : {}),
+      ...(cliTranscriptPath ? { transcript_path: cliTranscriptPath } : {}),
+      ...(cliModel ? { model: cliModel } : {}),
     };
   }
-  if (!payload.session_id || !payload.transcript_path) {
+  const host = hostName(payload);
+  if (!payload.host && host !== 'generic') payload.host = host;
+  if ((!payload.session_id || !payload.transcript_path) && host === 'codex') {
     const context = codexTraceContext();
     payload = {
       ...payload,
