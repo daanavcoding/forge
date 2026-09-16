@@ -84,7 +84,7 @@ function persistRunState(repo, state) {
   }
 }
 
-function readRunState(repo, runId) {
+export function readRunState(repo, runId) {
   const safe = safeRunId(runId);
   if (!safe) return null;
   try {

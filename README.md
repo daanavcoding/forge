@@ -91,7 +91,7 @@ without Codex's separate trust step.
 | **Graphify** | Finds likely entry points and relationships before broad file exploration. |
 | **Ponytail style** | Pushes specialists toward reuse, native features, and the smallest correct change. |
 | **Hooks** | Activate project context and run state locally, deterministically, and fail-open. |
-| **Run summary** | Records the outcome and immediate host-owned telemetry under `.forge/runs/`; the finalizer resolves the current Codex trace from its session id, `Stop` updates it when the turn ends, and `SessionEnd` refreshes it when the thread closes. |
+| **Run summary** | Records the outcome and immediate host-owned telemetry under `.forge/runs/`; the finalizer uses the active host transcript, while Codex and Claude `Stop`/`SessionEnd` hooks refresh it when the turn or thread closes. |
 
 ### Skills
 
@@ -168,8 +168,13 @@ Forge estimates API-equivalent cost from the generated
 [`model-pricing.json`](plugins/forge/data/model-pricing.json) catalog. It
 contains validated USD-per-million-token rates from
 [Models.dev](https://models.dev/) and is read locally at runtime; hooks and
-summaries never fetch pricing from the network. Provider and exact model must
-resolve unambiguously, otherwise cost remains unavailable.
+summaries never fetch pricing from the network. The resolver uses the observed
+provider first, then an explicit `provider/model` namespace (as used by
+OpenCode), and only then the official provider default for a first-party agent:
+Codex → OpenAI and Claude Code → Anthropic. Other agents without an explicit
+route remain unavailable instead of selecting an arbitrary gateway. Telemetry
+shows the Models.dev snapshot plus the official provider rate-card reference
+when one is available.
 
 The `Update model pricing` GitHub workflow refreshes the catalog every Monday.
 When prices change, it runs Forge's checks, creates a pull request containing

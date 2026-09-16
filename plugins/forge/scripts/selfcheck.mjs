@@ -20,7 +20,7 @@ import {
 } from './host-manager.mjs';
 import { PRIVATE_SKILL_CATALOG } from '../worker-skills/catalog.mjs';
 import { ensureRun, writeRunSummary } from './run-state.mjs';
-import { estimateCost, formatTelemetry, telemetryFromTrace } from './telemetry.mjs';
+import { estimateCost, formatTelemetry, resolvePricingRoute, telemetryFromTrace } from './telemetry.mjs';
 import { codexTraceContext, locateCodexTranscript } from './codex-trace.mjs';
 import { assertSafeCatalogChange, buildPricingSnapshot, updatePricing, validatePricingSnapshot } from './update-pricing.mjs';
 
@@ -265,16 +265,44 @@ const manualRecovery = spawnSync(process.execPath, [
   '--manual-approved',
   '--cwd',
   continuationTmp,
-], { encoding: 'utf8', env: process.env, windowsHide: true });
+], (() => {
+  const env = { ...process.env };
+  delete env.CLAUDE_PLUGIN_ROOT;
+  delete env.PLUGIN_ROOT;
+  delete env.FORGE_HOST;
+  delete env.CODEX_SESSION_ID;
+  delete env.CODEX_THREAD_ID;
+  return { encoding: 'utf8', env, windowsHide: true };
+})());
 assert.equal(manualRecovery.status, 0, manualRecovery.stderr);
 const manualOutput = JSON.parse(manualRecovery.stdout);
 const manualContext = manualOutput.hookSpecificOutput.additionalContext;
 const manualFacts = JSON.parse(manualContext.split('FORGE_FACTS\n')[1]);
 assert.equal(manualFacts.activation, 'manual_context_recovery');
 assert.equal(manualFacts.approval_confirmed, true);
+assert.equal(manualFacts.host, 'generic');
 assert.equal(manualFacts.run_state.status, 'approved');
 assert.match(manualContext, /FORGE_PROJECT_CONTEXT/);
 assert.match(manualContext, /FORGE_SKILL_DISCOVERY/);
+
+const claudeManualRecovery = spawnSync(process.execPath, [
+  fileURLToPath(new URL('./hook.mjs', import.meta.url)),
+  '--manual-approved',
+  '--cwd',
+  continuationTmp,
+], (() => {
+  const env = { ...process.env, CLAUDE_PLUGIN_ROOT: fileURLToPath(new URL('..', import.meta.url)) };
+  delete env.PLUGIN_ROOT;
+  delete env.FORGE_HOST;
+  delete env.CODEX_SESSION_ID;
+  delete env.CODEX_THREAD_ID;
+  return { encoding: 'utf8', env, windowsHide: true };
+})());
+assert.equal(claudeManualRecovery.status, 0, claudeManualRecovery.stderr);
+const claudeManualFacts = JSON.parse(
+  JSON.parse(claudeManualRecovery.stdout).hookSpecificOutput.additionalContext.split('FORGE_FACTS\n')[1],
+);
+assert.equal(claudeManualFacts.host, 'claude');
 
 const explicitSession = 'session-explicit-continuation';
 const explicitTrace = path.join(continuationTmp, `rollout-${explicitSession}.jsonl`);
@@ -673,6 +701,12 @@ assert.match(attachment, /"task":"implement attachment task"/);
 const claudeInvocation = handle({ prompt: '/forge:forge verify Claude support', cwd: tmp, host: 'claude_code' })
   .hookSpecificOutput.additionalContext;
 assert.match(claudeInvocation, /"task":"verify Claude support"/);
+for (const host of ['gemini-cli', 'opencode', 'cursor', 'antigravity']) {
+  const expectedHost = host === 'gemini-cli' ? 'gemini' : host;
+  const hostContext = handle({ prompt: `$forge detect ${host}`, cwd: tmp, host })
+    .hookSpecificOutput.additionalContext;
+  assert.match(hostContext, new RegExp(`"host":"${expectedHost}"`));
+}
 
 const bare = handle({ prompt: '/forge', cwd: tmp }).hookSpecificOutput.additionalContext;
 assert.match(bare, /"task":"Forge invocation"/);
@@ -770,21 +804,71 @@ assert.equal(estimateCost({
   usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
 }).estimated_usd, 5);
 assert.equal(estimateCost({
+  platform: 'anthropic_api',
+  model: 'claude-opus-4-5',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider_source, 'https://platform.claude.com/docs/en/about-claude/pricing');
+assert.equal(estimateCost({
   platform: 'google_api',
   model: 'gemini-2.5-flash',
   usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
 }).estimated_usd, 0.3);
+assert.equal(estimateCost({
+  platform: 'google_api',
+  model: 'gemini-2.5-flash',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider_source, 'https://ai.google.dev/gemini-api/docs/pricing');
 assert.equal(estimateCost({
   platform: 'anthropic_api',
   model: 'custom-model',
   usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
   pricing: { input: 3, output: 15, source: 'vendor rate card', as_of: '2026-08-01' },
 }).estimated_usd, 3);
-assert.match(formatTelemetry({ model: 'unknown-model' }), /Cost: unavailable \(pricing unavailable for this exact model\)/);
-assert.match(formatTelemetry({ model: 'gpt-5.6', usage: telemetry.usage }), /API-equivalent USD/);
-assert.match(formatTelemetry({ model: 'gpt-5.6-sol', usage: telemetry.usage }), /snapshot .* from https:\/\/models\.dev\/api\.json/);
-assert.match(formatTelemetry({ model: 'gpt-5.6-luna', usage: { input_tokens: 3, cached_input_tokens: 1, output_tokens: 2 } }), /total unavailable/);
-assert.match(formatTelemetry({ model: 'gpt-5.6-luna', usage: { input_tokens: 3, output_tokens: 2 } }), /cached input usage unavailable/);
+const codexRoute = resolvePricingRoute({ platform: 'codex', model: 'gpt-5.6-sol' });
+assert.deepEqual(codexRoute, { provider: 'openai', resolution: 'official-agent-default' });
+assert.equal(estimateCost({
+  platform: 'codex',
+  model: 'gpt-5.6-sol',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider, 'openai');
+assert.equal(estimateCost({
+  platform: 'codex',
+  model: 'gpt-5.6-sol',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider_source, 'https://developers.openai.com/api/docs/models');
+assert.equal(estimateCost({
+  platform: 'claude',
+  model: 'claude-opus-4-5',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider, 'anthropic');
+assert.equal(estimateCost({
+  platform: 'opencode',
+  model: 'openrouter/openai/gpt-5.6-sol',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider, 'openrouter');
+assert.equal(estimateCost({
+  platform: 'opencode',
+  model: 'opencode-go/gpt-5.6-luna',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider, 'opencode-go');
+assert.deepEqual(resolvePricingRoute({
+  platform: 'codex',
+  model: 'gpt-5.6-sol',
+  provider: 'openrouter',
+}), { provider: 'openrouter', resolution: 'observed-provider' });
+assert.equal(estimateCost({
+  platform: 'opencode',
+  model: 'gpt-5.6-sol',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+}).pricing, null);
+assert.match(formatTelemetry({ model: 'unknown-model' }), /Cost: unavailable \(pricing unavailable: provider route is ambiguous\)/);
+assert.match(formatTelemetry({ platform: 'openai_api', model: 'gpt-5.6', usage: telemetry.usage }), /estimated API cost USD/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /route official agent default/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /provider rate card https:\/\/developers\.openai\.com\/api\/docs\/models/);
+assert.match(formatTelemetry({ platform: 'opencode', model: 'openrouter/openai/gpt-5.6-sol', usage: telemetry.usage }), /route model namespace/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /snapshot .* from https:\/\/models\.dev\/api\.json/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, cached_input_tokens: 1, output_tokens: 2 } }), /total unavailable/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, output_tokens: 2 } }), /cached input usage unavailable/);
 assert.doesNotMatch(formatTelemetry({}), /Skills:|Host limits:|Duration:|Tokens:|Cost:/);
 assert.match(formatTelemetry({ public_skills: ['forge'], internal_skills: ['node'] }), /Skills: public forge; internal node/);
 assert.doesNotMatch(formatTelemetry({ public_skills: ['forge'] }), /forge x1/);
@@ -933,6 +1017,94 @@ assert.equal(parsedTraceTelemetry.model_calls, 1);
 assert.deepEqual(parsedTraceTelemetry.tools, { exec: 1 });
 assert.deepEqual(parsedTraceTelemetry.public_skills, ['forge', 'openai-docs']);
 assert.deepEqual(parsedTraceTelemetry.internal_skills, ['node', 'rag']);
+
+const claudeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-claude-trace-'));
+const claudeSessionId = 'claude-session-telemetry-fixture';
+const claudeTrace = path.join(claudeTmp, 'claude-transcript.jsonl');
+const claudePluginRoot = fileURLToPath(new URL('..', import.meta.url));
+const claudeActivationContext = handle({
+  prompt: '$forge capture Claude telemetry',
+  cwd: claudeTmp,
+  host: 'claude',
+  session_id: claudeSessionId,
+  transcript_path: claudeTrace,
+  model: 'claude-sonnet-4-5-20250929',
+}, {
+  graphify: { attempted: true, status: 'ready', fallback_reason: null, evidence: 'Claude trace fixture' },
+}).hookSpecificOutput.additionalContext;
+const claudeRunId = JSON.parse(claudeActivationContext.split('FORGE_FACTS\n')[1]).run_state.run_id;
+assert.equal(writeRunSummary({ repo: claudeTmp, runId: claudeRunId, summary: sessionSummary }), true);
+fs.writeFileSync(claudeTrace, [
+  JSON.stringify({
+    type: 'user',
+    session_id: claudeSessionId,
+    timestamp: '2026-08-13T09:00:00.000Z',
+    message: { role: 'user', content: [{ type: 'text', text: '$forge capture Claude telemetry' }] },
+  }),
+  JSON.stringify({
+    type: 'assistant',
+    session_id: claudeSessionId,
+    timestamp: '2026-08-13T09:00:00.000Z',
+    message: {
+      role: 'assistant',
+      model: 'claude-sonnet-4-5-20250929',
+      provider: 'anthropic',
+      content: [{
+        type: 'tool_use',
+        name: 'Read',
+        input: { file_path: path.join(claudePluginRoot, 'worker-skills', 'node', 'SKILL.md') },
+      }],
+      usage: {
+        input_tokens: 100,
+        cache_read_input_tokens: 40,
+        cache_creation_input_tokens: 10,
+        output_tokens: 20,
+      },
+    },
+  }),
+  JSON.stringify({
+    type: 'user',
+    session_id: claudeSessionId,
+    timestamp: '2026-08-13T09:00:02.000Z',
+    message: {
+      role: 'user',
+      content: [{ type: 'tool_result', tool_use_id: 'read-node', content: 'SKILL.md loaded' }],
+    },
+  }),
+].join('\n') + '\n', 'utf8');
+const claudeTelemetry = telemetryFromTrace(fs.readFileSync(claudeTrace, 'utf8'), {
+  state: { host: 'claude', public_skills: ['forge'] },
+  source: 'host trace: Claude fixture',
+});
+assert.equal(claudeTelemetry.platform, 'claude');
+assert.equal(claudeTelemetry.provider, 'anthropic');
+assert.equal(claudeTelemetry.model, 'claude-sonnet-4-5-20250929');
+assert.equal(claudeTelemetry.usage.input_tokens, 140);
+assert.equal(claudeTelemetry.usage.cached_input_tokens, 40);
+assert.equal(claudeTelemetry.usage.output_tokens, 20);
+assert.equal(claudeTelemetry.turns, 1);
+assert.equal(claudeTelemetry.model_calls, 1);
+assert.deepEqual(claudeTelemetry.tools, { Read: 1 });
+assert.deepEqual(claudeTelemetry.public_skills, ['forge']);
+assert.deepEqual(claudeTelemetry.internal_skills, ['node']);
+assert.match(formatTelemetry(claudeTelemetry), /Model: claude \/ anthropic \/ claude-sonnet-4-5-20250929/);
+assert.match(formatTelemetry(claudeTelemetry), /Skills: public forge; internal node/);
+const claudeFinalize = spawnSync(process.execPath, [
+  fileURLToPath(new URL('./finalize.mjs', import.meta.url)),
+  '--existing', '--repo', claudeTmp, '--run-id', claudeRunId,
+], {
+  encoding: 'utf8',
+  windowsHide: true,
+  env: { ...process.env, CODEX_HOME: path.join(tmp, 'unrelated-codex-home'), CODEX_SESSION_ID: 'unrelated-codex-session', CODEX_THREAD_ID: '' },
+});
+assert.equal(claudeFinalize.status, 0, claudeFinalize.stderr);
+assert.equal(JSON.parse(claudeFinalize.stdout).telemetry_reason, 'telemetry-copied');
+const claudeSummary = fs.readFileSync(path.join(claudeTmp, '.forge', 'runs', claudeRunId, 'summary.md'), 'utf8');
+assert.match(claudeSummary, /Model: claude \/ anthropic \/ claude-sonnet-4-5-20250929/);
+assert.match(claudeSummary, /Skills: public forge; internal node/);
+assert.match(claudeSummary, /Data source: host trace:/);
+assert.deepEqual(handleSessionEnd({ cwd: claudeTmp, session_id: claudeSessionId, transcript_path: claudeTrace }), { processed: 1, enriched: 1 });
+
 const sessionEndResult = handleSessionEnd({ cwd: tmp, session_id: sessionId, transcript_path: sessionTrace });
 assert.deepEqual(sessionEndResult, { processed: 1, enriched: 1 });
 const enrichedSummary = fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8');
@@ -1031,6 +1203,12 @@ const claudeHooks = JSON.parse(fs.readFileSync(new URL('../claude/hooks.json', i
 assert.equal(claudeHooks.PreToolUse, undefined);
 assert.match(claudeHooks.UserPromptSubmit[0].hooks[0].command, /CLAUDE_PLUGIN_ROOT/);
 assert.match(claudeHooks.UserPromptSubmit[0].hooks[0].command, /claude-hook\.mjs/);
+assert.equal(claudeHooks.Stop.length, 1);
+assert.match(claudeHooks.Stop[0].hooks[0].command, /session-end\.mjs/);
+assert.doesNotMatch(claudeHooks.Stop[0].hooks[0].command, /--codex-only/);
+assert.equal(claudeHooks.SessionEnd.length, 1);
+assert.match(claudeHooks.SessionEnd[0].hooks[0].command, /session-end\.mjs/);
+assert.doesNotMatch(claudeHooks.SessionEnd[0].hooks[0].command, /--codex-only/);
 
 const clientHome = path.join(tmp, 'client-home');
 const clientProject = path.join(tmp, 'client-project');

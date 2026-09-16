@@ -33,9 +33,12 @@ or nested Forge run. Never read or expose `.env` or `appsettings.json`.
      variables. Reuse `FORGE_PROJECT_CONTEXT` without rereading its source file.
      If no Forge context was delivered, derive `<plugin-root>` from this file and
      run `node "<plugin-root>/scripts/hook.mjs" --manual-approved --cwd "<repository>"`,
-     then use `hookSpecificOutput.additionalContext`. Stop if recovery fails on
-     a hook-capable host; on a deliberately skill-only host, continue with normal
-     repository conventions and disclose that hook-only context is unavailable.
+     then use `hookSpecificOutput.additionalContext`. The dispatcher preserves
+     the host supplied by the adapter and detects Claude, Codex, or a generic
+     coding agent when manual recovery is needed; it never assumes Codex for an
+     unknown host. Stop if recovery fails on a hook-capable host; on a deliberately
+     skill-only host, continue with normal repository conventions and disclose
+     that hook-only context is unavailable.
    - Select the necessary private specialists from `FORGE_SKILL_DISCOVERY` using
      the task, project context, Graphify evidence, and focused inspection. Do not
      open skill bodies while selecting. Then read and apply only the selected
@@ -65,12 +68,13 @@ and a normal user-facing answer. The handoff is not the chat response.
 - If `run_state.summary` exists, use the normal file-writing tool to write exactly
   one concise summary directly to that exact path. Then run
   `node "<plugin-root>/scripts/finalize.mjs" --existing --repo "<repository>" --run-id "<run_id>"`
-  and verify the summary exists. On Codex, the finalizer resolves the exact
-  host transcript from the current session/thread identifier and adds immediate
-  host-owned telemetry. It uses honest run-state-only telemetry only when that
-  transcript is unavailable;
-  the Codex `Stop` hook replaces it when the turn ends, and `SessionEnd` may
-  refresh it later with the complete host trace. Do not invent
+  and verify the summary exists. The finalizer uses the transcript path persisted
+  by the host adapter and adds immediate host-owned telemetry. For legacy Codex
+  runs without that path it may resolve the exact Codex transcript from the
+  session/thread identifier; Claude and generic agents are never pointed at a
+  Codex trace. It uses honest run-state-only telemetry only when the host
+  transcript is unavailable. Host `Stop` and `SessionEnd` adapters may refresh
+  it later with the complete trace. Do not invent
   a path; the runtime owns the run directory.
 - A completed file starts with `# Forge summary`, `status: completed`, and
   `resume: false`, followed by non-empty `## Changes`, `## Verification`,
