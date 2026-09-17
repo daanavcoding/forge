@@ -24,9 +24,10 @@ const user = UserSchema.parse(await res.json());    // real assurance (zod, vali
 
 ## Configuration
 
-`"strict": true` is non-negotiable; if the project lacks it, enable it and fix the errors — each
-one reveals a defect that already existed. Add `noUncheckedIndexedAccess` so `arr[0]` is
-`T | undefined`, because the array can be empty and often is.
+Prefer `"strict": true` for new projects. In an existing project, preserve its configuration;
+enabling stricter flags across the repository is a separate migration. Consider
+`noUncheckedIndexedAccess` when configuring a project so potentially missing indexed values are
+checked. Keep the requested change safe without expanding it into unrelated compiler fixes.
 
 ## `any` versus `unknown`
 
@@ -80,7 +81,7 @@ with `extends` rather than leaving it open.
 copying guarantees divergence. Use `satisfies` to check a type **without** losing inference:
 
 ```ts
-const config = { host: "localhost", port: 8080 } satisfies Config;
+const config = { host: "localhost", port: 8080 } as const satisfies Config;
 config.port;   // literal 8080, not `number`
 ```
 
@@ -97,7 +98,9 @@ config.port;   // literal 8080, not `number`
 
 ## Verification
 
-- `tsc --noEmit` clean, without `skipLibCheck` hiding project errors.
+- Run the repository's typecheck command without weakening its configuration to hide errors.
+- For public generic APIs, check valid inference and invalid calls with type tests; a runtime test
+  alone cannot prove that the exported types reject incorrect usage.
 - Run `tsc` through the project `tsconfig.json`; do not pass source filenames beside it. Use
   `--ignoreConfig` only when deliberately compiling outside the project configuration.
 - Zero new `any` in the diff.

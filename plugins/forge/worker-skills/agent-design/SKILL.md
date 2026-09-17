@@ -39,8 +39,10 @@ An agent can do only what its tools allow. Security is decided there, not in the
 
 - Always a hard iteration limit. Not a precaution — it will be reached.
 - A per-run cost or cumulative token limit.
-- Detect loops: same call with the same arguments twice, stop.
-- After two attempts at the same failure, escalate. A third almost never helps.
+- Detect repeated calls with unchanged state and no progress. Distinguish a stuck loop from
+  intentional bounded polling or a transient retry.
+- Bound retries by error category, time and cost. If repeated attempts provide no new evidence,
+  stop and report the failure or request the missing input.
 
 ## Context: the silent enemy
 

@@ -82,7 +82,8 @@ verify the test fails.
 - A dependency for what `node:util` or `fetch` already does.
 - `process.exit()` during active work; it cuts pending I/O and truncates output.
 - Catching `unhandledRejection` and continuing.
-- `^` version ranges in a deployed application. Use the lockfile and `npm ci`.
+- Deploying without a committed lockfile and reproducible install (`npm ci` for npm projects).
+  Compatible manifest ranges are valid when the lockfile fixes the deployed dependency graph.
 - Modules that open connections or read files at import time.
 
 ## Verification

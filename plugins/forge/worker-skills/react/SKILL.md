@@ -11,8 +11,19 @@ description: React 19.2 with hooks, derived state instead of synchronization eff
 Target **React 19.2** for new code unless the repository pins another version. Framework-specific
 server-component behavior still belongs to the framework skill, such as `nextjs`.
 
-React-specific rules. Strict TypeScript follows the same rule as Angular (see `angular`); testing
-philosophy and coverage live in `testing`.
+React-specific rules. Type-system guidance lives in `typescript`; use the repository's test
+runner and assert observable user behavior.
+
+## Performance priorities
+
+Investigate request waterfalls and shipped JavaScript before adding memoization. Start independent
+requests together, reuse the existing data layer's deduplication, and lazy-load heavy optional UI
+when it reduces the initial bundle. Prefer supported direct imports over broad barrel imports
+when bundle analysis shows unnecessary code. Measure the affected interaction before and after.
+
+Keep state close to consumers; use functional updates when the next state depends on the previous
+one. Cancel or ignore obsolete asynchronous results so a slower old request cannot overwrite a
+newer result. Clean up subscriptions and timers on unmount.
 
 ## Derived state, not `useEffect` synchronization
 

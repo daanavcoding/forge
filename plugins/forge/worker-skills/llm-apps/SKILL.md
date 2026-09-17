@@ -39,14 +39,14 @@ response = client.structured_output(
 data = response.parsed_output           # may be None; check it
 ```
 
-Common schema constraints: no recursion, no `minimum`/`maxLength`, and mandatory
-`additionalProperties: false` on every object.
+Supported JSON Schema subsets vary by provider and model. Check supported keywords and enforce
+business constraints locally even when the provider guarantees syntactically valid output.
 
 ## Check why the model stopped, before reading content
 
-`stop_reason == "refusal"` means the model declined and `content` may be empty;
-`stop_reason == "max_tokens"` means the response is truncated and must not be treated as complete.
-Reading `response.content[0]` without checking fails in both cases.
+Inspect the selected SDK's completion status, refusal representation, and tool-call response
+shape before reading content. A refusal may be a content block rather than a stop reason, and
+truncation must not be treated as a complete answer. Never index an assumed nonempty content list.
 
 ## Parameters: use those supported today
 
@@ -67,16 +67,16 @@ Changing any byte invalidates everything after it. Three practical rules:
 - **Nothing dynamic at the beginning.** A `datetime.now()` or session ID in the system prompt
   invalidates the cache on every request. Variable context goes at the end.
 - **Serialize deterministically** — `json.dumps(d, sort_keys=True)`, never iterate a `set`.
-- **Do not change tools mid-conversation.** Tools render first, so changing them invalidates
-  everything.
+- Keep tool definitions stable when useful for the provider's cache, but do not retain unnecessary
+  tools or permissions solely to preserve a cache hit.
 
-Verify it: if `usage.cache_read_input_tokens` stays 0 across repeated requests with the same
-prefix, something is invalidating it.
+Verify provider-reported cached-token usage. Minimum prefix length, eligibility, expiry, and
+provider-specific cache controls can explain a miss even when the prefix is unchanged.
 
 ## Count tokens
 
-Use the provider endpoint (`client.messages.count_tokens`), not `tiktoken` — that targets another
-vendor's tokenizer and is off by 15-20% on ordinary text, more on code.
+Use the selected provider's counting endpoint or a tokenizer matching the actual model. Label
+local counts as estimates and use returned usage for observed billing; no tokenizer is universal.
 
 ## Errors and retries
 
@@ -99,5 +99,5 @@ vendor's tokenizer and is off by 15-20% on ordinary text, more on code.
 ## Verification
 
 - Execute one successful case and one invalid-schema case.
-- Cover a `stop_reason` other than `end_turn`.
-- With caching enabled, verify `cache_read_input_tokens > 0` on the second call.
+- Cover refusal, truncation, and tool-call responses using the selected SDK's actual representation.
+- With caching enabled, check eligible repeated requests and the provider's cached-token field.

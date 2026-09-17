@@ -76,7 +76,8 @@ Streams transform collections; they do not replace every loop.
 - `ExecutorService` over manually created threads; on Java 21+, virtual threads for I/O-heavy work.
 - Shared mutable state requires synchronization; the cheapest synchronization is not sharing it.
 - `ConcurrentHashMap` over manually synchronizing `HashMap`.
-- A `CompletableFuture` without `exceptionally` or `handle` silently loses failures.
+- Observe a `CompletableFuture` through an awaited/joined result or a completion handler that
+  propagates failure. A fire-and-forget future can lose failures; not every chain needs recovery.
 
 ## Anti-patterns
 
@@ -91,7 +92,7 @@ Streams transform collections; they do not replace every loop.
 
 ## Verification
 
-- Actually run `mvn test` or `gradle test` and retain the output.
+- Prefer the repository's Maven/Gradle wrapper and configured verification task; retain the output.
 - Compile with no new warnings.
 - If concurrency changed, add a test that exercises the concurrent path — a sequential test proves
   nothing about concurrency.

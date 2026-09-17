@@ -8,9 +8,12 @@ description: Define errors that cross layer or service boundaries using typed do
 
 # Error contracts across boundaries
 
-One rule for every stack: **the domain core raises its own typed error, and translation to the
+One rule for every stack: **the domain core reports its own typed error, and translation to the
 external form (HTTP, UI message, exit code, event) happens in exactly one place at the layer
 boundary** — never scattered across callers.
+
+Use exceptions or the repository's existing typed Result convention; do not add a competing
+mechanism solely to follow an example below.
 
 ## Domain error shape
 
@@ -24,7 +27,7 @@ class DomainError(Exception):        # concrete FastAPI/Python implementation li
 ```
 
 ```csharp
-public class EmailAlreadyExistsException : DomainException   // full layer matrix in `dotnet`
+public class EmailAlreadyExistsException : DomainException   // application-defined base type
 {
     public override string Code => "EMAIL_TAKEN";
 }
@@ -33,9 +36,9 @@ public class EmailAlreadyExistsException : DomainException   // full layer matri
 ## One translation point
 
 - **FastAPI:** a global `exception_handler`; see `fastapi`.
-- **.NET:** the `InterfaceAdapters`/`Frameworks` boundary (middleware or filter) maps the domain
-  exception to `ProblemDetails` or an HTTP status. `BusinessLogic`/`ApplicationLogic` never know
-  about HTTP; see the matrix in `dotnet`.
+- **.NET:** the application's transport boundary (middleware or filter) maps the domain
+  exception or existing Result type to `ProblemDetails` or an HTTP status. Business logic never
+  needs to know about HTTP; follow the repository's layer names and dependencies.
 - **Angular:** an `HttpInterceptor`, or the service's `catchError` when there is no global
   interceptor. The component never wraps the HTTP call in `try/catch`; see `angular`.
 

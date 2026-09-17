@@ -15,8 +15,9 @@ FastAPI-specific rules. Typing, logging, layering and dependency rules for all P
 
 ## Stack
 
-FastAPI + **Pydantic v2** + **SQLAlchemy 2.0 async** + `asyncio`. Never a synchronous route that
-blocks.
+Use the installed Pydantic and persistence stack. `async def` routes require nonblocking I/O;
+regular `def` routes can use blocking libraries through FastAPI's thread pool. Do not add
+SQLAlchemy or migrate a synchronous stack unless persistence work requires it.
 
 ## Structure
 
@@ -54,23 +55,27 @@ async def get_by_email(session: AsyncSession, email: str) -> User | None:
 ## Typed errors without leakage
 
 **One mechanism:** the service raises a domain error, a global `exception_handler` translates it to
-HTTP, the route catches nothing. No `try/except` in the endpoint, no second `AppException`
-wrapping the first — the domain error already carries its code and status.
+HTTP. Keep transport status mapping at that boundary, not in domain exceptions. Preserve an
+existing consistent error contract rather than introducing a second wrapper.
 
 ```python
 class DomainError(Exception):
     code: str = "DOMAIN_ERROR"
-    status_code: int = 400
 
 
 class EmailAlreadyExistsError(DomainError):
     code = "EMAIL_TAKEN"
-    status_code = 409
 
 
 @app.exception_handler(DomainError)
 async def domain_error_handler(request: Request, exc: DomainError) -> JSONResponse:
-    return JSONResponse(status_code=exc.status_code, content={"code": exc.code, "message": str(exc)})
+    if isinstance(exc, EmailAlreadyExistsError):
+        return JSONResponse(status_code=409, content={
+            "code": exc.code, "message": "Email already registered",
+        })
+    return JSONResponse(status_code=500, content={
+        "code": "INTERNAL_ERROR", "message": "Request could not be completed",
+    })
 ```
 
 The service checks its invariant and raises (`raise EmailAlreadyExistsError(data.email)`); the
@@ -80,8 +85,8 @@ route just declares `response_model` and `status_code` and returns the service c
 
 - Route = HTTP only (status, parsing, auth, serialization). Service = business logic.
   Repository = data.
-- Only the `exception_handler` translates errors to HTTP. If an endpoint needs `try/except`, a
-  handler is missing.
+- Use a consistent boundary handler for domain errors. Local recovery or resource cleanup may
+  still require `try/except`; do not expose exception strings or sensitive request values.
 - No blocking synchronous I/O inside an `async def` route.
 - `Depends()` for sessions, auth and settings — never instantiate them in the route.
 - Environment variables through `pydantic_settings.BaseSettings`; never hardcoded.
@@ -97,3 +102,10 @@ route just declares `response_model` and `status_code` and returns the service c
 - A repository or service raising `HTTPException` directly.
 - A public endpoint without `response_model`.
 - Changing middleware or authentication without exercising the async path.
+
+## Verification
+
+Use the existing TestClient or async HTTPX setup with isolated dependency overrides. Exercise
+valid input, validation failure, unauthenticated/unauthorized access, and domain-error mapping.
+For database changes, verify rollback and session cleanup; do not share one AsyncSession across
+concurrent tasks. Restore dependency overrides after each test.

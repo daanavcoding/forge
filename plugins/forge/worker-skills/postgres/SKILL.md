@@ -1,8 +1,7 @@
 ---
 name: postgres
-description: PostgreSQL 18 schemas and migrations, including snake_case naming, idempotent DDL,
-  acceptable DROP usage, indexed foreign keys, and explicit ON DELETE/ON UPDATE actions. Use when
-  creating or modifying PostgreSQL migrations, tables, indexes, constraints, or schemas. Do not
+description: PostgreSQL schemas, migrations, query plans, indexes, locking, and row-level access.
+  Use when creating or modifying PostgreSQL SQL, migrations, tables, indexes, or constraints. Do not
   use for application-layer persistence logic.
 ---
 
@@ -29,8 +28,9 @@ PostgreSQL folds an unquoted identifier to lowercase, so `REL_TB_UserProfile` is
 
 ## Idempotent DDL
 
-Every migration must survive reapplication: `CREATE TABLE IF NOT EXISTS`,
-`ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`.
+Follow the migration runner's contract: versioned migrations normally execute once; repeatable
+setup scripts must be idempotent. `IF NOT EXISTS` does not verify that an existing object has the
+expected shape and can conceal schema drift. Never rewrite an already applied migration.
 
 **`CREATE CONSTRAINT` does not exist as SQL syntax.** Constraints are added with `ALTER TABLE`:
 
@@ -51,11 +51,12 @@ claiming another purpose.
 Never `TRUNCATE` a table with real data outside a test environment. In production
 `DELETE FROM ... WHERE ...` is auditable and can be bounded.
 
-## Foreign keys: always indexed, with explicit actions
+## Foreign keys: deliberate actions and supporting indexes
 
-Every foreign key declares `ON DELETE` and `ON UPDATE` explicitly rather than inheriting an
-unexamined implicit `RESTRICT`, and carries an index. Without the index, every `DELETE`/`UPDATE`
-on the referenced table scans the whole child table to validate references.
+Choose `ON DELETE` and `ON UPDATE` from the data lifecycle; the default is `NO ACTION`, not
+`RESTRICT`. Index referencing columns when joins or parent updates/deletes need it, checking
+whether an existing composite index already provides the needed leading columns. Do not create
+duplicate indexes or choose cascading deletion merely because an example uses it.
 
 ```sql
 CREATE TABLE IF NOT EXISTS user_role (
@@ -67,8 +68,8 @@ CREATE INDEX IF NOT EXISTS idx_user_role_user_id ON user_role (user_id);
 
 ## Columns
 
-- Every new `NOT NULL` column includes a `DEFAULT`, unless the absence of a value is intentional
-  and explicitly required by the task.
+- For existing rows, plan a backfill before enforcing `NOT NULL`. Add a default only when it is a
+  meaningful domain value; do not manufacture placeholder data to make a migration pass.
 - `TIMESTAMPTZ`, never timezone-free `TIMESTAMP`, for `created_at`/`updated_at`, with
   `DEFAULT now()`.
 - No hardcoded data in the schema. Catalog values (roles, statuses) go in a separate seed script,
@@ -76,15 +77,27 @@ CREATE INDEX IF NOT EXISTS idx_user_role_user_id ON user_role (user_id);
 
 ## Soft delete, when appropriate
 
-`deleted_at TIMESTAMPTZ DEFAULT NULL` with `WHERE deleted_at IS NULL` is the default for historical
-business entities such as users and orders. Not for catalog or pure join tables like `user_role`,
-where keeping the deleted row has no value.
+Use soft deletion only when the product needs recoverability or retained history. Define how it
+affects uniqueness, filters, retention, and actual erasure before adding `deleted_at`.
+
+## Performance and access boundaries
+
+- Inspect query plans on representative data before adding indexes. `EXPLAIN (ANALYZE, BUFFERS)`
+  executes the statement: use a safe test database for writes or expensive queries.
+- Match composite-index order to predicates and ordering; consider partial indexes for selective
+  predicates. Measure write overhead as well as read gains.
+- Plan lock duration and backfill size on populated tables. `CREATE INDEX CONCURRENTLY` cannot
+  run inside a transaction block; configure the migration runner accordingly when needed.
+- Use bounded connection pools and short transactions. Check timeouts and lock contention before
+  increasing the pool size.
+- For tenant-scoped data, test access as the actual application role. RLS owners and privileged
+  roles can bypass policies; a successful superuser test does not prove tenant isolation.
 
 ## Before merging a migration
 
 - Apply it locally against a real test database; visual review is insufficient.
 - `\d <table>` to confirm expected columns, types and constraints.
-- Every `CREATE`/`ALTER` idempotent with `IF (NOT) EXISTS`.
+- Verify the migration runner's reapply behavior, existing-data upgrade, and recovery plan.
 
 Translating a foreign-key or unique violation into the service's domain error lives in
 `error-contracts`.
@@ -94,5 +107,5 @@ Translating a foreign-key or unique violation into the service's domain error li
 - `REL_TB_PascalCase`, or any unquoted identifier whose case supposedly matters.
 - `CREATE CONSTRAINT`, which does not exist.
 - A `DROP` hidden inside a migration with another stated purpose.
-- A foreign key without explicit `ON DELETE`/`ON UPDATE` or without an index.
+- Unexamined cascade behavior or a missing index on an actively joined foreign key.
 - Catalog data inserted in the same file as table DDL.

@@ -37,6 +37,8 @@ Enter and Space, is announced as a button and joins keyboard navigation. A
 - Associate errors with fields via `aria-describedby` and `aria-invalid`. A detached red message
   may never be announced.
 - Group related controls in `<fieldset>` with `<legend>`, especially radio groups.
+- Preserve entered values on validation errors, allow paste and password managers, and use
+  appropriate `autocomplete` attributes. Announce asynchronous status updates accessibly.
 
 ## Accessibility
 
@@ -91,3 +93,5 @@ Enter and Space, is announced as a button and joins keyboard navigation. A
 - Zoom to 200%: nothing disappears, no horizontal page scrolling.
 - Run axe or Lighthouse with no new violations — remembering automation finds only about a third of
   accessibility problems. Check the rest manually.
+- Exercise loading, empty, error, and success states in the real UI. Report actionable findings
+  with file/line evidence and verify focus restoration after dialogs and navigation.
