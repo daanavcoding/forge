@@ -77,6 +77,13 @@ failure, and `if __name__ == "__main__": sys.exit(main())`.
 Read from `os.environ` or the project's settings library (see `fastapi` when applicable). Never a
 literal secret value in source or a commit.
 
+## Verification
+
+Use the repository's test runner and configured lint/type checks. For changed behavior, cover the
+failure and boundary cases as well as success. Isolate filesystem work with temporary directories
+and external services with fixtures or mocks at the I/O boundary; do not mock away the behavior
+under test. Keep async tests on the project's existing async test framework.
+
 ## Anti-patterns
 
 - Untyped dict or `Any` crossing a public module boundary.

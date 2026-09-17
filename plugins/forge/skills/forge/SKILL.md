@@ -52,10 +52,21 @@ or nested Forge run. Never read or expose `.env` or `appsettings.json`.
    repeat an unchanged command, and run no pre-change test except to diagnose
    or reproduce a regression.
 
+   For a bug, capture a reproducer or concrete failure evidence, trace the
+   failing boundary, and test one causal hypothesis before changing code.
+   If a fix fails, use the new evidence to revise the hypothesis; do not stack
+   speculative patches. Add a regression check when it can detect the actual
+   failure without merely mirroring the implementation.
+
 4. Run focused project verification and fix only evidence-backed failures.
    Once green, perform one final review headed `## Review`; if it finds a real
    defect, fix it and verify once without a review loop. Never claim completion
    without green verification.
+
+   Match each claim to observed command output and exit status for the current
+   inputs. A lint pass is not a build or behavior check. Review the final diff
+   against acceptance criteria and report actionable defects with severity,
+   file/line, and their consequence; separate unavailable checks from passes.
 
 5. If a commit was requested, use the public `forge-commit` skill, which owns
    context refresh, narrow staging, final verification, and the commit.

@@ -35,8 +35,9 @@ when the change looks "obviously" better.
 - **Position bias:** prefers the first option. Alternate order and average.
 - **Verbosity bias:** scores longer answers higher. Address it explicitly in the rubric.
 - **Self-similarity bias:** prefers work from a similar model.
-- **The judge must not be the model that produced the answer.** It approves itself — the most
-  common and expensive design failure.
+- Use a separate judging call without the author's reasoning or desired verdict. A different
+  model can reduce correlated bias, but model identity alone does not validate a judge; calibrate
+  it against human labels and keep its rubric independent of the candidate's output.
 
 Rules for a useful judge:
 
@@ -51,7 +52,8 @@ Rules for a useful judge:
 - Same input, test set and conditions. Change **one** variable at a time.
 - Repeat each case — models are non-deterministic, and a one-point difference between single runs
   means nothing.
-- Report the median, not the mean; one unusual case should not dominate.
+- Report pass rates for binary checks, per-category results, and appropriate latency/cost
+  percentiles. Do not replace a success rate with a median of binary scores.
 - State uncertainty on small samples. "62% versus 58% on 20 cases" is noise.
 
 ## Regression detection
@@ -64,7 +66,7 @@ Rules for a useful judge:
 
 ## Anti-patterns
 
-- Using the same model to generate and evaluate.
+- Treating an uncalibrated judge as ground truth, especially when it favors its own model family.
 - Evaluating against the examples used to write the prompt.
 - One aggregate metric hiding a gain in one use case and a regression in another.
 - Scores from 0 to 100 implying false precision.

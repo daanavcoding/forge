@@ -1,103 +1,55 @@
 ---
 name: dotnet
-description: Modern .NET 10 and C# 14 with Clean Architecture, including layer dependencies, Enumeration
-  instead of enum, manual composition without a DI container, and contracts without business
-  logic. Use when creating or modifying .NET backends, use cases, interactors, or C# domain
-  layers. Do not use for unrelated languages or frontend work.
+description: C# and .NET backends, dependency injection, asynchronous I/O, persistence, domain
+  boundaries, and API tests. Use when changing .NET services, endpoints, or domain logic.
+  Do not use for unrelated languages or frontend work.
 ---
 
 # .NET
 
-.NET 10 is the current LTS baseline and C# 14 is its current language version. Use those features
-for new code when the project targets them; preserve an older target's compatibility when it does
-not.
+Read the project's target framework, SDK selection, nullable settings, and architecture before
+choosing APIs. Preserve its supported runtime and naming conventions; do not turn a feature into
+a framework or architecture migration.
 
-.NET backends using Clean Architecture. The cross-boundary error contract is generalized in
-`error-contracts`; this skill covers only its C# representation. Testing philosophy lives in
-`testing`; the command here is `dotnet test`.
+## Boundaries and composition
 
-## Layer matrix (the single source of truth)
+- Keep business rules independent of HTTP and persistence details. Follow the repository's actual
+  project-reference boundaries rather than imposing a fixed set of assembly names.
+- Use the existing composition root. ASP.NET Core's built-in dependency injection is a normal
+  default: scoped services for request-bound state, transient for lightweight independent work,
+  singleton only for thread-safe shared services. Never capture a scoped DbContext in a singleton.
+- Add an interface or layer for a real boundary, not for every class. Do not introduce a generic
+  repository over EF Core solely to wrap its existing operations.
+- Prefer ordinary enums for closed named values, records for value-oriented data, and richer
+  domain types when behavior or invariants require them. Pure static helpers are valid.
+- Keep types internal unless intentionally part of a public assembly contract.
 
-```
-BusinessLogic      -> Types, Types.Exceptions                (nothing else)
-ApplicationLogic   -> BusinessLogic, Types, Types.Exceptions
-InterfaceAdapters  -> Types, Frameworks.Types
-Frameworks         -> Frameworks.Types + external NuGet packages
-Contracts          -> no references to another project
-```
+## Async and resources
 
-Never implement a dependency that crosses this matrix in reverse — `BusinessLogic` referencing
-`Frameworks`, for instance — even when the task requests it. **Escalate it as a blocker.**
+- Await I/O end to end and pass CancellationToken through HTTP and database operations.
+  Avoid `.Result`, `.Wait()`, and Task.Run around naturally asynchronous I/O.
+- Run independent work concurrently only when its dependencies support concurrent use.
+  DbContext is not thread-safe: never run parallel queries on the same instance.
+- Dispose owned resources with `using` or `await using`; let the container dispose services it owns.
+- Bound retries to transient failures and the request deadline. Retrying a write requires an
+  idempotency strategy; do not retry validation failures.
 
-## Hard rules
+## Persistence and API contracts
 
-1. **Never use `enum`.** Use an `Enumeration` class with named static instances; a C# `enum` cannot
-   carry behavior or be validated with the rest of the domain.
-2. **Never create static classes or methods**, except extension containers
-   (`static class XExtensions`).
-3. **No dependency-injection container** beyond the host's minimum. Compose manually in an explicit
-   factory (`CompositionRoot`), without attributes or assembly scanning.
-4. **An interactor must not call another interactor.** Shared steps move into a domain service used
-   by both.
-5. Classes `internal` by default; `public` only for types intentionally crossing assembly
-   boundaries.
-6. Methods `private` by default.
-7. A parameter with more than one responsibility takes an interface, not a coupled concrete class.
-8. `Contracts` references no other project — it is the flat outer boundary.
-9. External NuGet packages only in `Frameworks` or the entry point, never in `BusinessLogic`.
+- Project only needed columns and use AsNoTracking for EF Core reads that will not be updated.
+  Check generated SQL for N+1 queries and unbounded results before adding caches.
+- Parameterize SQL. Use a transaction when multiple writes must succeed together and handle
+  optimistic concurrency explicitly when competing updates are possible.
+- Validate public inputs and enforce authorization at the endpoint/service boundary.
+- Translate typed domain errors or the existing Result type at one boundary into the established
+  HTTP contract, such as ProblemDetails. Keep stack traces and database details out of responses;
+  follow `error-contracts` for stable codes.
+- Load configuration through the project's existing options/settings mechanism. Never inspect
+  `.env` or `appsettings.json`; use safe examples, code declarations, or user-provided values.
 
-## Pattern: one use case, one `Handle()`
+## Verification
 
-A `public interface I{System}{Name}Interactor` exposing `Task<TResult> Handle(TRequest request)`,
-implemented by an `internal sealed` class that takes its repositories through the constructor,
-checks the invariant, throws the typed domain exception on violation, and returns a result record.
-
-## Enumeration instead of enum
-
-```csharp
-public abstract class Enumeration : IEquatable<Enumeration>
-{
-    public int Id { get; }
-    public string Name { get; }
-
-    protected Enumeration(int id, string name) => (Id, Name) = (id, name);
-
-    public bool Equals(Enumeration? other) => other is not null && other.Id == Id;
-    public override bool Equals(object? obj) => Equals(obj as Enumeration);
-    public override int GetHashCode() => Id.GetHashCode();
-}
-
-public sealed class OrderStatus : Enumeration
-{
-    public static readonly OrderStatus Pending = new(1, nameof(Pending));
-    public static readonly OrderStatus Shipped = new(2, nameof(Shipped));
-
-    private OrderStatus(int id, string name) : base(id, name) { }
-}
-```
-
-## Naming
-
-Interactor interface `I{System}{Name}` (`IUserRegistrationInteractor`). `PascalCase` classes,
-`_camelCase` private fields, `camelCase` parameters and variables. One file per public type.
-
-## Validation before handoff
-
-- `dotnet build` with no new warnings.
-- `dotnet test` passing for the task's scope.
-- No project reference crossing the layer matrix in reverse.
-- No new `enum`, static class or method, or DI container.
-
-## Escalate as a blocker
-
-- The task requires a dependency that breaks the layer matrix.
-- Completing it requires one interactor to call another.
-- Required contracts or interfaces are missing, so no implementation can satisfy the hard rules.
-
-## Anti-patterns
-
-- A C# `enum` in new domain code.
-- An interactor invoking another interactor.
-- A DI container for new domain code.
-- A `public` class that could be `internal`.
-- A NuGet package imported into `BusinessLogic`.
+Run `dotnet build` and the relevant `dotnet test` scope. For an API change, exercise the real
+request pipeline with the existing integration harness (for example WebApplicationFactory),
+including invalid input, denied access, and error serialization. Test persistence behavior against
+a representative database when transactions, SQL translation, or concurrency matter.

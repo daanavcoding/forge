@@ -11,20 +11,18 @@ description: Angular 22 standalone components with signals, input()/output(), @i
 Target **Angular 22** for new code. Components are standalone by default; preserve the repository's
 target when working in an older application.
 
-Rules for **new** Angular code. Testing philosophy and coverage live in `testing`; the
-frontend/backend error contract lives in `error-contracts` — this skill covers only how Angular
-consumes it.
+Check the installed Angular version and local conventions before selecting APIs. The
+frontend/backend error contract lives in `error-contracts`; type-system guidance is in `typescript`.
 
-## One position (non-negotiable)
+## Modern defaults within the installed version
 
 Standalone + signals + `input()`/`output()`/`model()` + `inject()` + native control flow +
-`OnPush`. There is no second acceptable position using `@Input`, constructor injection or
-`BehaviorSubject` for new code.
+`OnPush` are useful defaults when supported. Preserve compatible existing patterns rather than
+mixing styles or forcing an unrelated migration.
 
 **Legacy repositories:** if the file you touch already uses `NgModule`, `@Input()` or
-`BehaviorSubject`, do not migrate it unless the task requires that migration. New code you add
-still follows this skill even when it differs from the surrounding code. Migrating a whole file
-incidentally is out of scope.
+`BehaviorSubject`, do not migrate it unless the task requires that migration. New code must remain
+compatible with that application's version and architecture.
 
 ## Standard component
 
@@ -88,7 +86,9 @@ submit(): void {
 }
 ```
 
-Never template-driven forms or `FormControl<any>` in new code.
+Use the project's forms approach. For new Angular 22+ projects, consider stable Signal Forms;
+typed Reactive Forms remain appropriate for existing applications. Template-driven forms can fit
+simple forms. Avoid `FormControl<any>` when the value type is known.
 
 ## HTTP in services
 
@@ -98,18 +98,21 @@ the error crossing into the UI is defined in `error-contracts`.
 
 ## Types and naming
 
-- `strict: true` in `tsconfig.json`. Never `any`; use `unknown` when the type is unknown. This
-  TypeScript rule is shared with `react`.
+- Prefer strict typing in new projects; use `unknown` for unvalidated external data. Do not change
+  application-wide compiler flags as part of an unrelated component edit.
 - Component `kebab-case.component.ts`, selector `app-kebab-case`. Service
   `kebab-case.service.ts`. Domain interface `PascalCase.ts`, no `I` prefix.
 
 ## Tests
 
+Run `ng build` for template and framework integration errors, then the relevant component tests.
+Cover loading, empty and error states plus keyboard interaction when the UI changes.
+
 New Angular CLI projects use Vitest with `jsdom`; run `ng test` (use `--no-watch` in CI). Keep
 Karma/Jasmine or Jest only when the repository already uses it or a browser-specific test requires
 it.
 
-## Anti-patterns
+## Anti-patterns in modern code without legacy compatibility constraints
 
 - `@Input()`/`@Output()`/`EventEmitter` or `NgModule` in new code.
 - `*ngIf`/`*ngFor` in new templates.

@@ -22,7 +22,7 @@ Everything flows through state. Design it first; the rest follows.
 
 ```python
 class State(TypedDict):
-    messages: Annotated[list, add]   # accumulate
+    messages: Annotated[list, add_messages]  # message-aware merge by ID
     attempts: int                    # overwrite
     result: str | None
 
@@ -34,8 +34,9 @@ Two rules prevent most bugs:
 
 - **A node returns only the keys it changes.** Returning the whole state overwrites what other
   nodes wrote.
-- **The reducer decides accumulate vs overwrite.** `Annotated[list, add]` concatenates; without the
-  annotation the value is replaced. A disappearing message history usually means a missing reducer.
+- **The reducer decides merge vs overwrite.** Import `add_messages` from `langgraph.graph.message`
+  for chat messages so updates by message ID work. Use list concatenation for append-only data;
+  without a reducer a value is replaced. Parallel writers need an explicit compatible reducer.
 
 ## Conditional edges and cycles
 
@@ -85,6 +86,11 @@ debugging; every interrupt still requires a checkpointer and a stable `thread_id
 `interrupt_before` pauses before a node for approval. It **requires a checkpointer** — without one
 there is nowhere to pause. Resuming with `None` continues from the exact location. Use it for
 irreversible actions: paying, deleting, publishing.
+
+Dynamic `interrupt()` resumes by restarting its node, not by continuing the Python stack. Put
+side effects after approval or make earlier work replay-safe. Do not catch the interrupt in a
+broad exception handler. Resume with `Command(resume=...)` on the same thread and verify that a
+restart does not repeat a payment, message, or other external write.
 
 ## Anti-patterns
 

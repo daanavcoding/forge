@@ -85,6 +85,11 @@ They still work, but plan the migration now:
 - **Structured output** when the client consumes fields; free-form text forces parsing.
 - **Bound output volume.** A tool that can return 50,000 lines needs pagination or a limit, or it
   consumes the client's whole context window.
+- Supply accurate read-only, destructive, idempotent, and open-world annotations supported by the
+  SDK. These are client hints, not authorization enforcement; validate permissions on the server.
+- Evaluate representative tasks that require finding and calling the right tool, following
+  pagination, and recovering from a useful error. Successful `tools/list` alone does not prove
+  that an agent can accomplish the intended workflow.
 
 ## List caching
 

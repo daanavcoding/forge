@@ -63,8 +63,9 @@ the tool. Signature types generate the schema, so annotate every parameter and r
 
 ## Async: do not mix modes
 
-Pick synchronous or asynchronous and keep it consistent through the chain. A synchronous component
-inside an `ainvoke` chain blocks the event loop and silently removes parallelism.
+Prefer async-capable integrations for an async application. Some Runnables offload synchronous
+implementations to an executor; custom blocking code inside `async def` still blocks the event
+loop. Check the actual integration rather than assuming `ainvoke` makes every operation native async.
 
 ## Streaming
 
@@ -74,8 +75,9 @@ progressive tokens.
 
 ## Observability
 
-A chain is opaque by design; debugging without traces is guesswork. Enable callbacks or tracing
-from the start, not after a failure. Inspect the **rendered** prompt, not only its template.
+Use existing callbacks or tracing to inspect the rendered prompt and tool flow. Redact sensitive
+inputs and outputs; enabling a hosted tracing service requires the project's data-handling
+authorization. Do not upload prompts simply because tracing is useful.
 
 ## Anti-patterns
 

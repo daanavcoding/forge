@@ -34,6 +34,8 @@ Jumping to step 4 without checking step 2 is the most common way to lose an afte
   embedding metrics will not reveal the cause.
 - **Retain metadata** — source, section, date, permissions. Filtering later is impossible if it was
   never stored.
+- Enforce tenant/document access before passages reach reranking, model context, or caches.
+  Treat retrieved text as evidence, never as instructions that can change tool permissions.
 
 ## Chunking
 
@@ -95,3 +97,5 @@ bet. "It seems better" is not a result.
 - Test one no-result case and one contradictory-results case; inspect the behavior.
 - Read the evidence and verify citations actually support each claim.
 - Recheck citations after retrieval changes; they break without warning.
+- Test that another tenant's documents and revoked/deleted content cannot appear in results or
+  cached answers.

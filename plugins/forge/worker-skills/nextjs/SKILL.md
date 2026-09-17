@@ -1,7 +1,7 @@
 ---
 name: nextjs
 description: Next.js 16.3 App Router patterns for server and client components, data fetching, caching,
-  server actions, streaming, and routes. Use when a repository has next.config or app/. Do not use
+  server actions, streaming, and routes. Use for confirmed Next.js projects or explicit Next.js tasks. Do not use
   for framework-agnostic React patterns or TypeScript types; use react or typescript respectively.
 ---
 
@@ -12,7 +12,7 @@ follow its installed APIs and configuration instead of assuming 16.3 behavior.
 
 Framework-specific rules. Hooks, derived state and keys live in `react`.
 
-**Every component is a server component unless it contains `"use client"`.** That directive is a
+**App Router components are server components by default.** The `"use client"` directive is a
 **boundary**, not a label: everything imported below it becomes client code. A `"use client"` high
 in the tree moves the whole application into the browser and inflates the bundle.
 
@@ -35,12 +35,14 @@ public. Add `import "server-only"` to such modules so compilation fails before p
 
 ## Data
 
-- Fetch **where it is used**, not at the root passed through many layers; request deduplication
-  prevents repeated calls.
+- Fetch **where it is used** and verify the data layer's actual deduplication behavior. Database
+  queries and arbitrary SDK calls are not automatically deduplicated like supported fetch calls.
 - Independent requests in parallel with `Promise.all`; sequential `await` adds latency for nothing.
 - An `await` in a layout blocks every child page.
 - `loading.tsx` and `<Suspense>` stream slow content without blocking fast content.
 - `error.tsx` per segment (must be a client component); `not-found.tsx` for missing data.
+- Pass only necessary serializable data across server/client boundaries. Keep request-specific
+  user data out of shared module state and unscoped cross-request caches.
 
 ## Request-time APIs
 
@@ -85,8 +87,9 @@ behavior nobody chose will eventually return stale data, or none, depending on t
 "use server";
 
 export async function updateProfile(formData: FormData) {
-  const parsed = ProfileSchema.parse(Object.fromEntries(formData));  // ALWAYS validate
-  await db.profile.update(parsed);
+  const user = await requireAuthenticatedUser(); // application auth helper rejects anonymous calls
+  const parsed = ProfileSchema.parse(Object.fromEntries(formData));
+  await updateOwnProfile(user.id, parsed); // application service enforces ownership and allowed fields
   revalidatePath("/profile");
 }
 ```

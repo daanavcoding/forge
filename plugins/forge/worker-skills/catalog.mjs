@@ -3,7 +3,7 @@
 export const PRIVATE_SKILL_CATALOG = Object.freeze([
   { name: 'agent-design', description: 'LLM agents, loops, tool surfaces, memory, context limits, and reliability.' },
   { name: 'angular', description: 'Angular standalone components, signals, modern control flow, routing, forms, and tests.' },
-  { name: 'dotnet', description: '.NET and C# with Clean Architecture, layer boundaries, domain modeling, and tests.' },
+  { name: 'dotnet', description: '.NET and C# backends, dependency injection, async I/O, persistence, domain boundaries, and tests.' },
   { name: 'error-contracts', description: 'Typed errors crossing layer or service boundaries, mappings, and stable contracts.' },
   { name: 'fastapi', description: 'FastAPI with Pydantic contracts, router/service/repository layers, validation, and tests.' },
   { name: 'html-css', description: 'Semantic HTML, accessibility, responsive layout, focus, forms, and modern CSS.' },
@@ -16,7 +16,7 @@ export const PRIVATE_SKILL_CATALOG = Object.freeze([
   { name: 'mcp', description: 'MCP servers and clients, stateless tool contracts, lifecycle, and security.' },
   { name: 'nextjs', description: 'Next.js App Router, server/client components, data fetching, caching, and routing.' },
   { name: 'node', description: 'Node.js modules, filesystems, streams, processes, runtime behavior, and tests.' },
-  { name: 'postgres', description: 'PostgreSQL schemas and migrations, snake_case, idempotent DDL, and query safety.' },
+  { name: 'postgres', description: 'PostgreSQL schemas, migrations, query plans, indexes, locks, and row-level access.' },
   { name: 'python', description: 'Python scripts, CLIs, libraries, domain logic, typing, packaging, and tests.' },
   { name: 'rag', description: 'Retrieval-augmented generation: ingestion, chunking, embeddings, hybrid retrieval, and grounding.' },
   { name: 'react', description: 'React hooks, derived state, component boundaries, stable identity, and tests.' },
