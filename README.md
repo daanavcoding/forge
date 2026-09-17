@@ -1,5 +1,9 @@
 # Forge
 
+<p align="center">
+  <img src="assets/forge-logo.png" alt="Forge logo" width="240">
+</p>
+
 **Deterministic automation for AI coding agents.**
 
 Forge turns a coding request into a controlled workflow with an explicit plan,
