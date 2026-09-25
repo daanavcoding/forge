@@ -175,10 +175,31 @@ function providerFromValue(value) {
   return null;
 }
 
+function providerFromModelFamily(model) {
+  const normalized = normalizedIdentifier(model);
+  if (!normalized) return null;
+  const modelName = normalized.split('/').at(-1);
+  const family = [
+    [/^claude(?:-|$)/, 'anthropic'],
+    [/^(?:gpt-|o[1345](?:-|$)|chatgpt-)/, 'openai'],
+    [/^gemini(?:-|$)/, 'google'],
+    [/^grok(?:-|$)/, 'xai'],
+    [/^mistral(?:-|$)|^codestral(?:-|$)/, 'mistral'],
+    [/^deepseek(?:-|$)/, 'deepseek'],
+    [/^command-r(?:-|$)/, 'cohere'],
+    [/^qwen(?:-|$)|^qvq(?:-|$)/, 'alibaba'],
+    [/^kimi(?:-|$)/, 'moonshotai'],
+    [/^minimax(?:-|$)/, 'minimax'],
+    [/^glm(?:-|$)/, 'zai'],
+  ].find(([pattern]) => pattern.test(modelName));
+  return family?.[1] || null;
+}
+
 function providerFromModel(model) {
   const normalized = normalizedIdentifier(model);
-  if (!normalized || !normalized.includes('/')) return null;
-  return providerFromValue(normalized.slice(0, normalized.indexOf('/')));
+  if (!normalized) return null;
+  return providerFromModelFamily(model)
+    || (normalized.includes('/') ? providerFromValue(normalized.slice(0, normalized.indexOf('/'))) : null);
 }
 
 function providerFromPlatform(platform, catalog) {
@@ -191,6 +212,15 @@ function providerFromPlatform(platform, catalog) {
 }
 
 export function resolvePricingRoute({ model = null, platform = null, provider = null } = {}) {
+  const familyProvider = providerFromModelFamily(model);
+  if (familyProvider) {
+    const platformName = normalizedIdentifier(platform);
+    return {
+      provider: familyProvider,
+      resolution: AGENT_DEFAULT_PROVIDERS[platformName] === familyProvider
+        ? 'official-agent-default' : 'official-model-family',
+    };
+  }
   const explicitProvider = providerFromValue(provider);
   if (explicitProvider) {
     return { provider: explicitProvider, resolution: 'observed-provider' };
@@ -224,7 +254,7 @@ function knownPricing(model, { platform = null, provider = null } = {}) {
   const catalog = loadPricingCatalog();
   const route = resolvePricingRoute({ model: normalized, platform, provider });
   const providerId = route.provider;
-  const providerPrefix = providerId && normalized.startsWith(`${providerId}/`) ? normalized.slice(providerId.length + 1) : null;
+  const providerPrefix = providerId && normalized.includes('/') ? normalized.split('/').at(-1) : null;
   const match = providerId
     ? exactModel(catalog?.providers?.[providerId]?.models, normalized)
       || (providerPrefix ? exactModel(catalog?.providers?.[providerId]?.models, providerPrefix) : null)
@@ -267,6 +297,7 @@ function suppliedPricing(value) {
   if (!value || typeof value !== 'object') return null;
   const input = finite(value.input_per_million ?? value.input);
   const cached = finite(value.cached_input_per_million ?? value.cached_input);
+  const cacheWrite = finite(value.cache_write_per_million ?? value.cache_write);
   const output = finite(value.output_per_million ?? value.output);
   if (input === null || output === null) return null;
   return {
@@ -274,6 +305,7 @@ function suppliedPricing(value) {
     provider: oneLine(value.provider),
     input,
     cached_input: cached ?? input,
+    cache_write: cacheWrite,
     output,
     currency: oneLine(value.currency) || 'USD',
     source: oneLine(value.source),
@@ -326,14 +358,16 @@ function usageShape(value, { cachedInputIsSeparate = false } = {}) {
   if (!value || typeof value !== 'object') return null;
   const inputTokens = integer(value.input_tokens ?? value.inputTokens ?? value.input);
   const cachedInputTokens = integer(value.cached_input_tokens ?? value.cache_read_input_tokens ?? value.cachedInputTokens ?? value.cache_read);
+  const cacheWriteTokens = integer(value.cache_write_input_tokens ?? value.cache_creation_input_tokens ?? value.cacheWriteInputTokens);
   const usage = {
     // Claude reports uncached input and cache reads as separate fields. Forge's
     // normalized cost model stores total input, so combine them only for that
     // host shape; Codex-style cumulative usage remains unchanged.
-    input_tokens: cachedInputIsSeparate && inputTokens !== null && cachedInputTokens !== null
-      ? inputTokens + cachedInputTokens
+    input_tokens: cachedInputIsSeparate && inputTokens !== null
+      ? inputTokens + (cachedInputTokens || 0) + (cacheWriteTokens || 0)
       : inputTokens,
-    cached_input_tokens: cachedInputTokens,
+    cached_input_tokens: cachedInputIsSeparate ? (cachedInputTokens ?? 0) : cachedInputTokens,
+    cache_write_input_tokens: cacheWriteTokens,
     output_tokens: integer(value.output_tokens ?? value.outputTokens ?? value.output),
     reasoning_output_tokens: integer(value.reasoning_output_tokens ?? value.reasoningOutputTokens ?? value.reasoning_output),
     total_tokens: integer(value.total_tokens ?? value.totalTokens ?? value.total),
@@ -346,7 +380,7 @@ function usageShape(value, { cachedInputIsSeparate = false } = {}) {
 
 function addUsage(left, right) {
   const result = {};
-  for (const key of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
+  for (const key of ['input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
     const a = integer(left?.[key]);
     const b = integer(right?.[key]);
     result[key] = a === null && b === null ? null : (a || 0) + (b || 0);
@@ -360,7 +394,7 @@ function addUsage(left, right) {
 function subtractUsage(current, baseline) {
   if (!current) return null;
   const result = {};
-  for (const key of ['input_tokens', 'cached_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens', 'token_count']) {
+  for (const key of ['input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens', 'token_count']) {
     const value = integer(current[key]);
     const before = integer(baseline?.[key]);
     result[key] = value === null ? null : Math.max(0, value - (before || 0));
@@ -407,6 +441,12 @@ function firstMetric(sources, names) {
 export function telemetryFromTrace(trace, { state = {}, source = 'host trace', baseline_usage = null } = {}) {
   const records = traceRecords(trace);
   if (!records.length) return null;
+  const startedMs = timestampMs(state.started_epoch_ms ?? state.started_at);
+  let preRunUsage = null;
+  let preRunModel = null;
+  let preRunProvider = null;
+  let preRunEffort = null;
+  let hasPreRunRecords = false;
   let cumulativeUsage = null;
   const perTurnUsages = [];
   const directUsages = [];
@@ -434,6 +474,17 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
     const payload = record.payload && typeof record.payload === 'object' ? record.payload : record;
     const info = payload.info && typeof payload.info === 'object' ? payload.info : record.info;
     const at = timestampMs(record.timestamp ?? record.time ?? payload.timestamp ?? payload.time ?? record.at ?? payload.at);
+    if (startedMs !== null && at !== null && at < startedMs) {
+      hasPreRunRecords = true;
+      const settings = payload.thread_settings && typeof payload.thread_settings === 'object' ? payload.thread_settings : null;
+      preRunModel = oneLine(payload.message?.model ?? settings?.model ?? payload.model ?? record.model) || preRunModel;
+      preRunProvider = oneLine(payload.message?.provider ?? settings?.provider ?? payload.provider ?? record.provider) || preRunProvider;
+      preRunEffort = oneLine(payload.message?.reasoning_effort ?? settings?.reasoning_effort ?? payload.reasoning_effort ?? record.reasoning_effort) || preRunEffort;
+      if (String(payload.type || record.type || '').toLowerCase() === 'token_count') {
+        preRunUsage = usageShape(info?.total_token_usage ?? payload.total_token_usage ?? record.total_token_usage) || preRunUsage;
+      }
+      continue;
+    }
     if (at !== null) {
       firstTimestamp = firstTimestamp === null ? at : Math.min(firstTimestamp, at);
       lastTimestamp = lastTimestamp === null ? at : Math.max(lastTimestamp, at);
@@ -459,7 +510,8 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
     ].includes(String(block.type || '').toLowerCase()));
     const isAssistantMessage = messageType === 'assistant'
       || (messageRole === 'assistant' && Boolean(message));
-    observedModel = observedModel || oneLine(message?.model ?? threadSettings?.model ?? payload.model ?? record.model);
+    const traceModel = oneLine(message?.model ?? threadSettings?.model ?? payload.model ?? record.model);
+    if (traceModel && (!observedModel || /^(?:default|inherit)$/i.test(observedModel))) observedModel = traceModel;
     observedProvider = observedProvider || oneLine(message?.provider ?? threadSettings?.provider ?? payload.provider ?? record.provider);
     observedEffort = observedEffort || oneLine(message?.reasoning_effort ?? threadSettings?.reasoning_effort ?? payload.reasoning_effort ?? record.reasoning_effort);
     const itemType = String(payload.type || '').toLowerCase();
@@ -482,22 +534,35 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
         recordEvidence(skillEvidence, match[1], 'host skill attachment');
       }
       if (isToolCall) {
-        const skillPattern = /worker-skills[\\\\/]+([a-z0-9-]+)[\\\\/]+SKILL\.md/gi;
-        for (const match of searchable.matchAll(skillPattern)) {
-          internalSkills.add(match[1]);
-          recordEvidence(skillEvidence, match[1], 'private SKILL.md read');
-        }
-        if (/worker-skills/i.test(searchable) && /SKILL\.md/i.test(searchable)) {
-          const names = /\bconst\s+names\s*=\s*(\[[^\]\r\n]*\])/i.exec(searchable);
-          if (names) {
-            try {
-              for (const name of JSON.parse(names[1])) {
-                if (/^[a-z0-9-]+$/i.test(String(name))) {
-                  internalSkills.add(String(name));
-                  recordEvidence(skillEvidence, String(name), 'private SKILL.md batch read');
+        // Claude records Read/Bash arguments inside message.content[].input;
+        // Codex records them on the tool-call payload. Normalize JSON-escaped
+        // Windows paths before looking for an actual private skill read.
+        const toolInputs = [payload.input, payload.arguments, ...toolUseBlocks.map((block) => block.input)]
+          .map((value) => typeof value === 'string' ? value : JSON.stringify(value ?? ''))
+          .join('\n');
+        const directReadTool = ['read', 'bash', 'exec_command'].includes(String(payload.name || '').toLowerCase())
+          || toolUseBlocks.some((block) => ['read', 'bash'].includes(String(block.name || '').toLowerCase()));
+        const wrappedRead = /tools\.exec_command\s*\(/.test(toolInputs)
+          || (!/tools\.apply_patch\s*\(/.test(toolInputs) && /\b(?:Get-Content|cat)\b/.test(toolInputs));
+        if (directReadTool || wrappedRead) {
+          const skillSearch = `${toolInputs}\n${serialized}`.replace(/\\+/g, '/');
+          const skillPattern = /worker-skills\/+([a-z0-9-]+)\/+SKILL\.md/gi;
+          for (const match of skillSearch.matchAll(skillPattern)) {
+            internalSkills.add(match[1]);
+            recordEvidence(skillEvidence, match[1], 'private SKILL.md read');
+          }
+          if (/worker-skills/i.test(skillSearch) && /SKILL\.md/i.test(skillSearch)) {
+            const names = /\bconst\s+names\s*=\s*(\[[^\]\r\n]*\])/i.exec(skillSearch);
+            if (names) {
+              try {
+                for (const name of JSON.parse(names[1])) {
+                  if (/^[a-z0-9-]+$/i.test(String(name))) {
+                    internalSkills.add(String(name));
+                    recordEvidence(skillEvidence, String(name), 'private SKILL.md batch read');
+                  }
                 }
-              }
-            } catch { /* Dynamic batch skill reads are optional telemetry. */ }
+              } catch { /* Dynamic batch skill reads are optional telemetry. */ }
+            }
           }
         }
       }
@@ -525,6 +590,7 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
     const claudeUsage = Boolean(messageUsage && (
       Object.hasOwn(messageUsage, 'cache_read_input_tokens')
       || Object.hasOwn(messageUsage, 'cache_creation_input_tokens')
+      || /^claude(?:-|$)/i.test(oneLine(message?.model) || observedModel || '')
     ));
     const direct = usageShape(messageUsage ?? payload.usage ?? record.usage, {
       cachedInputIsSeparate: claudeUsage,
@@ -543,10 +609,16 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
   }
 
   let usage = cumulativeUsage;
+  if (cumulativeUsage && (baseline_usage || preRunUsage)) {
+    usage = subtractUsage(cumulativeUsage, usageShape(baseline_usage) || preRunUsage);
+  } else if (cumulativeUsage && hasPreRunRecords) {
+    usage = null;
+  }
   if (!usage && perTurnUsages.length) usage = perTurnUsages.reduce((total, item) => addUsage(total, item), null);
   if (!usage && directUsages.length) usage = directUsages.reduce((total, item) => addUsage(total, item), null);
-  if (cumulativeUsage && baseline_usage) usage = subtractUsage(cumulativeUsage, usageShape(baseline_usage));
-  const startedMs = timestampMs(state.started_epoch_ms ?? state.started_at);
+  observedModel ||= preRunModel;
+  observedProvider ||= preRunProvider;
+  observedEffort ||= preRunEffort;
   const stateStartIsUsable = startedMs !== null && (lastTimestamp === null || startedMs <= lastTimestamp);
   const startedAt = stateStartIsUsable
     ? state.started_at
@@ -590,9 +662,10 @@ export function estimateCost({ model = null, platform = null, provider = null, u
   const rate = suppliedPricing(pricing) || knownPricing(model, { platform, provider });
   const input = integer(usage.input_tokens);
   const cached = integer(usage.cached_input_tokens);
+  const cacheWrite = integer(usage.cache_write_input_tokens) ?? 0;
   const output = integer(usage.output_tokens);
   const route = resolvePricingRoute({ model, platform, provider });
-  if (!rate || input === null || cached === null || output === null || cached > input) {
+  if (!rate || input === null || cached === null || output === null || cached + cacheWrite > input) {
     return {
       estimated_usd: null,
       api_equivalent_usd: null,
@@ -608,6 +681,14 @@ export function estimateCost({ model = null, platform = null, provider = null, u
         : 'cached input exceeds total input',
     };
   }
+  if (cacheWrite > 0 && rate.cache_write == null) {
+    return {
+      estimated_usd: null,
+      api_equivalent_usd: null,
+      pricing: rate,
+      reason: 'cache write pricing unavailable',
+    };
+  }
   if ((rate.currency || 'USD').toUpperCase() !== 'USD') {
     return {
       estimated_usd: null,
@@ -616,8 +697,9 @@ export function estimateCost({ model = null, platform = null, provider = null, u
       reason: `unsupported pricing currency: ${rate.currency}`,
     };
   }
-  const uncached = input - cached;
-  const equivalent = ((uncached * rate.input) + (cached * rate.cached_input) + (output * rate.output)) / MILLION;
+  const uncached = input - cached - cacheWrite;
+  const equivalent = ((uncached * rate.input) + (cached * rate.cached_input)
+    + (cacheWrite * (rate.cache_write ?? 0)) + (output * rate.output)) / MILLION;
   return {
     estimated_usd: isApiPlatform(platform) ? equivalent : null,
     api_equivalent_usd: equivalent,
@@ -658,7 +740,9 @@ export function normalizeTelemetry(value = {}) {
   const tokenCount = integer(value.token_count ?? value.tokenCount ?? usage.token_count) ?? totalTokens;
   return {
     platform: oneLine(value.platform),
-    provider: oneLine(value.provider) || cost.pricing?.provider || null,
+    provider: cost.pricing?.provider
+      || resolvePricingRoute({ model: value.model, platform: value.platform, provider: value.provider }).provider
+      || oneLine(value.provider),
     model: oneLine(value.model),
     reasoning_effort: oneLine(value.reasoning_effort),
     activation: oneLine(value.activation),
@@ -681,6 +765,7 @@ export function normalizeTelemetry(value = {}) {
     usage: {
       input_tokens: inputTokens,
       cached_input_tokens: integer(usage.cached_input_tokens),
+      cache_write_input_tokens: integer(usage.cache_write_input_tokens),
       output_tokens: outputTokens,
       reasoning_output_tokens: integer(usage.reasoning_output_tokens),
       total_tokens: totalTokens,
@@ -702,6 +787,7 @@ export function formatTelemetry(value = {}) {
   const tokenLine = [
     `input ${amount(data.usage.input_tokens)}`,
     `cached ${amount(data.usage.cached_input_tokens)}`,
+    ...(data.usage.cache_write_input_tokens === null ? [] : [`cache writes ${amount(data.usage.cache_write_input_tokens)}`]),
     `output ${amount(data.usage.output_tokens)}`,
     `reasoning ${amount(data.usage.reasoning_output_tokens)}`,
     `total ${amount(data.usage.total_tokens)}`,
@@ -731,6 +817,7 @@ export function formatTelemetry(value = {}) {
     : '';
   const routeLabels = {
     'official-agent-default': 'official agent default',
+    'official-model-family': 'official model family',
     'observed-provider': 'observed provider',
     'model-namespace': 'model namespace',
     'platform-provider': 'platform provider',
