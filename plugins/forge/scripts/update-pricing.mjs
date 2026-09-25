@@ -97,44 +97,6 @@ function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-function catalogStats(providers) {
-  return Object.values(providers).reduce((totals, provider) => ({
-    providers: totals.providers + 1,
-    models: totals.models + Object.keys(provider.models).length,
-  }), { providers: 0, models: 0 });
-}
-
-export function assertSafeCatalogChange(current, incoming) {
-  if (!current) return;
-  const before = catalogStats(current.providers);
-  const after = catalogStats(incoming.providers);
-  if (after.providers < before.providers * 0.9) throw new Error('pricing source removed more than 10% of providers');
-  if (after.models < before.models * 0.9) throw new Error('pricing source removed more than 10% of priced models');
-  for (const [providerId, provider] of Object.entries(current.providers)) {
-    for (const [modelId, cost] of Object.entries(provider.models)) {
-      const next = incoming.providers[providerId]?.models?.[modelId];
-      if (!next) continue;
-      const comparePrices = (beforeCost, afterCost, suffix = '') => {
-        for (const field of ['input', 'cached_input', 'cache_write', 'output']) {
-          const oldPrice = beforeCost[field];
-          const newPrice = afterCost[field];
-          if (oldPrice === undefined || newPrice === undefined || oldPrice === 0 || newPrice === 0) continue;
-          const ratio = newPrice / oldPrice;
-          if (ratio > 10 || ratio < 0.1) {
-            throw new Error(`suspicious ${field} price change for ${providerId}/${modelId}${suffix}: ${oldPrice} -> ${newPrice}`);
-          }
-        }
-      };
-      comparePrices(cost, next);
-      const nextTiers = new Map((next.tiers || []).map((tier) => [tier.context_tokens_at_least, tier]));
-      for (const tier of cost.tiers || []) {
-        const nextTier = nextTiers.get(tier.context_tokens_at_least);
-        if (nextTier) comparePrices(tier, nextTier, ` at ${tier.context_tokens_at_least}+ tokens`);
-      }
-    }
-  }
-}
-
 export function buildPricingSnapshot(raw, { updatedAt = new Date().toISOString() } = {}) {
   const providers = normalizePricingCatalog(raw);
   return {
@@ -208,13 +170,12 @@ async function writeAtomic(file, content) {
   }
 }
 
-export async function updatePricing({ file = DEFAULT_PRICING_FILE, check = false, allowLargeChange = false, raw = null, now = new Date() } = {}) {
+export async function updatePricing({ file = DEFAULT_PRICING_FILE, check = false, raw = null, now = new Date() } = {}) {
   const current = await readJson(file);
   if (current) validatePricingSnapshot(current);
   const incoming = buildPricingSnapshot(raw || await fetchCatalog(PRICING_SOURCE_URL), { updatedAt: now.toISOString() });
   const changed = !current || current.catalog_sha256 !== incoming.catalog_sha256;
   if (!changed) return { changed: false, file, catalog_sha256: current.catalog_sha256 };
-  if (!allowLargeChange) assertSafeCatalogChange(current, incoming);
   if (check) return { changed: true, file, catalog_sha256: incoming.catalog_sha256 };
   await writeAtomic(file, `${JSON.stringify(incoming, null, 2)}\n`);
   return { changed: true, file, catalog_sha256: incoming.catalog_sha256 };
@@ -224,14 +185,12 @@ async function main() {
   const { values } = parseArgs({
     options: {
       check: { type: 'boolean', default: false },
-      'allow-large-change': { type: 'boolean', default: false },
       file: { type: 'string' },
     },
   });
   const result = await updatePricing({
     file: values.file ? path.resolve(values.file) : DEFAULT_PRICING_FILE,
     check: values.check,
-    allowLargeChange: values['allow-large-change'],
   });
   process.stdout.write(`${JSON.stringify(result)}\n`);
   if (values.check && result.changed) process.exitCode = 1;

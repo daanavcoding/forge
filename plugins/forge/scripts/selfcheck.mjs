@@ -22,7 +22,7 @@ import { PRIVATE_SKILL_CATALOG } from '../worker-skills/catalog.mjs';
 import { ensureRun, writeRunSummary } from './run-state.mjs';
 import { estimateCost, formatTelemetry, resolvePricingRoute, telemetryFromTrace } from './telemetry.mjs';
 import { codexTraceContext, locateCodexTranscript } from './codex-trace.mjs';
-import { assertSafeCatalogChange, buildPricingSnapshot, updatePricing, validatePricingSnapshot } from './update-pricing.mjs';
+import { buildPricingSnapshot, updatePricing, validatePricingSnapshot } from './update-pricing.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-plugin-'));
 const missingGraphify = path.join(tmp, 'missing-graphify');
@@ -107,14 +107,11 @@ assert.deepEqual(pricingFixture.providers.example.models['example-model'], {
 });
 assert.equal(pricingFixture.providers.example.models['unpriced-model'], undefined);
 assert.throws(() => buildPricingSnapshot({ example: { models: { unsafe: { cost: { input: -1, output: 1 } } } } }), /non-negative price/);
-const suspiciousPricingFixture = structuredClone(pricingFixture);
-suspiciousPricingFixture.providers.example.models['example-model'].input = 100;
-assert.throws(() => assertSafeCatalogChange(pricingFixture, suspiciousPricingFixture), /suspicious input price change/);
-const suspiciousTierFixture = structuredClone(pricingFixture);
-suspiciousTierFixture.providers.example.models['example-model'].tiers[0].output = 100;
-assert.throws(() => assertSafeCatalogChange(pricingFixture, suspiciousTierFixture), /at 200000\+ tokens/);
 const pricingFixtureFile = path.join(tmp, 'pricing', 'model-pricing.json');
-const pricingFixtureSource = { example: { name: 'Example Provider', models: { model: { cost: { input: 1, output: 2 } } } } };
+const pricingFixtureSource = {
+  example: { name: 'Example Provider', models: { model: { cost: { input: 1, output: 2 } } } },
+  removed: { name: 'Removed Provider', models: { model: { cost: { input: 1, output: 2 } } } },
+};
 assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource, now: new Date('2026-09-02T00:00:00Z') })).changed, true);
 assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource, now: new Date('2026-09-03T00:00:00Z') })).changed, false);
 const pricingFixtureBeforeCheck = fs.readFileSync(pricingFixtureFile, 'utf8');
@@ -122,6 +119,12 @@ const changedPricingFixtureSource = structuredClone(pricingFixtureSource);
 changedPricingFixtureSource.example.models.model.cost.output = 3;
 assert.equal((await updatePricing({ file: pricingFixtureFile, raw: changedPricingFixtureSource, check: true })).changed, true);
 assert.equal(fs.readFileSync(pricingFixtureFile, 'utf8'), pricingFixtureBeforeCheck);
+changedPricingFixtureSource.example.models.model.cost.input = 100;
+delete changedPricingFixtureSource.removed;
+assert.equal((await updatePricing({ file: pricingFixtureFile, raw: changedPricingFixtureSource })).changed, true);
+const reducedPricingFixture = validatePricingSnapshot(JSON.parse(fs.readFileSync(pricingFixtureFile, 'utf8')));
+assert.equal(reducedPricingFixture.providers.example.models.model.input, 100);
+assert.equal(reducedPricingFixture.providers.removed, undefined);
 assert.equal(claudeManifest.name, portableManifest.name);
 assert.equal(claudeManifest.version, portableManifest.version);
 assert.equal(claudeManifest.skills, './skills/');
