@@ -172,13 +172,15 @@ Forge estimates API-equivalent cost from the generated
 [`model-pricing.json`](plugins/forge/data/model-pricing.json) catalog. It
 contains validated USD-per-million-token rates from
 [Models.dev](https://models.dev/) and is read locally at runtime; hooks and
-summaries never fetch pricing from the network. The resolver uses the observed
-provider first, then an explicit `provider/model` namespace (as used by
-OpenCode), and only then the official provider default for a first-party agent:
-Codex → OpenAI and Claude Code → Anthropic. Other agents without an explicit
-route remain unavailable instead of selecting an arbitrary gateway. Telemetry
-shows the Models.dev snapshot plus the official provider rate-card reference
-when one is available.
+summaries never fetch pricing from the network. Recognized model families use
+their first-party provider rates: Claude → Anthropic, GPT → OpenAI, Gemini →
+Google, and the corresponding first-party providers for other known families.
+This takes precedence over gateway namespaces and observed provider labels.
+For other models, Forge uses an observed provider, a `provider/model` namespace,
+or the first-party agent default (Codex → OpenAI, Claude Code → Anthropic).
+Unresolved routes remain unavailable. Telemetry shows the Models.dev snapshot
+and the official provider rate-card reference when one is available; the
+catalog itself is sourced from Models.dev.
 
 The `Update model pricing` GitHub workflow refreshes the catalog every Monday.
 When prices change, it runs Forge's checks, creates a pull request containing

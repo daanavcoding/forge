@@ -71,10 +71,11 @@ Forge never launches a nested host or a model judge.
 The host-generated telemetry section may include compact execution telemetry
 when the host exposes it: platform/model/effort, token breakdown, cost
 estimate, duration/latency, turn and call counts, per-tool usage, activation,
-and timestamps. Pricing resolves the observed provider first, then an explicit
-`provider/model` model namespace, then a first-party default such as Codex →
-OpenAI or Claude Code → Anthropic. OpenCode and other multi-provider clients
-must expose their route explicitly; Forge leaves ambiguous pricing unavailable.
+and timestamps. Recognized model families use first-party provider rates
+(Claude → Anthropic, GPT → OpenAI, Gemini → Google) even when the host uses a
+gateway. Other models resolve through an observed provider, an explicit
+`provider/model` namespace, or a first-party agent default such as Codex →
+OpenAI or Claude Code → Anthropic. Unresolved routes remain unavailable.
 Forge labels subscription cost as API-equivalent and leaves the actual billed
 amount unavailable; it never manufactures missing usage. The
 fail-open SessionEnd worker writes observed token counts, latency, and

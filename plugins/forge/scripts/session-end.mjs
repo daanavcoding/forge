@@ -15,19 +15,42 @@ function readTrace(file) {
   try { return fs.readFileSync(path.resolve(String(file)), 'utf8'); } catch { return null; }
 }
 
+function linkedRunIds(trace) {
+  const ids = new Set();
+  if (!trace) return ids;
+  for (const line of trace.split(/\r?\n/)) {
+    let record;
+    try { record = JSON.parse(line); } catch { continue; }
+    const payload = record?.payload || record;
+    const message = payload?.type === 'message' ? payload : record?.message;
+    if (String(message?.role || record?.type || '').toLowerCase() !== 'assistant') continue;
+    const blocks = Array.isArray(message?.content) ? message.content : [];
+    for (const block of blocks) {
+      const content = typeof block === 'string' ? block : block?.text;
+      if (typeof content !== 'string' || !content.includes('Summary:')) continue;
+      for (const match of content.matchAll(/Summary:[^\r\n]*?\.forge[/\\]runs[/\\]([a-z0-9-]+)[/\\]summary\.md/gi)) {
+        ids.add(match[1]);
+      }
+    }
+  }
+  return ids;
+}
+
 export function handle(payload = {}) {
   try {
     const repo = path.resolve(payload.cwd || process.cwd());
     const sessionId = payload.session_id ? String(payload.session_id) : null;
     const transcriptPath = payload.transcript_path ? path.resolve(String(payload.transcript_path)) : null;
     const payloadTrace = readTrace(transcriptPath);
+    const linkedIds = linkedRunIds(payloadTrace);
     const candidates = listRuns(repo).filter((run) => {
       const sameSession = sessionId && run.session_id === sessionId;
-      const sameTranscript = transcriptPath && samePath(run.transcript_path, transcriptPath);
-      // Manual context recovery cannot see host-only session identifiers. The
-      // model must link the exact run summary in its final response, so the
-      // random run_id in the host transcript is an equally precise join key.
-      const referencedByTrace = payloadTrace && run.run_id && payloadTrace.includes(run.run_id);
+      const sameTranscript = transcriptPath && samePath(run.transcript_path, transcriptPath)
+        && (!sessionId || run.session_id === sessionId);
+      // Manual recovery may lack session identifiers. Only an assistant's
+      // final Forge summary link identifies its run; arbitrary mentions in
+      // tool output or earlier conversation do not.
+      const referencedByTrace = linkedIds.has(run.run_id);
       return Boolean(run.run_id && run.summary && (sameSession || sameTranscript || referencedByTrace));
     });
     let enriched = 0;

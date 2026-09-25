@@ -84,10 +84,12 @@ This document defines the current public workflow contract.
   available. The final chat remains a normal user-facing answer followed by a
   summary link.
 - API-equivalent costs use the bundled, generated Models.dev snapshot. Runtime
-  hooks and finalizers never access the network. Lookup resolves an observed
-  provider first, then an explicit `provider/model` namespace, then the
-  official provider default for first-party agents such as Codex → OpenAI and
-  Claude Code → Anthropic. Ambiguous agents do not guess a provider. The
+  hooks and finalizers never access the network. Recognized model families
+  resolve to their first-party provider before gateway namespaces or observed
+  provider labels (Claude → Anthropic, GPT → OpenAI, Gemini → Google). Other
+  models use an observed provider, an explicit `provider/model` namespace, or
+  the first-party agent default such as Codex → OpenAI and Claude Code →
+  Anthropic. Ambiguous agents do not guess a provider. The
   summary records the selected route and, where known, the official provider
   rate-card reference. A scheduled GitHub workflow validates and merges
   pricing-only changes without changing a plugin version; anomalous changes

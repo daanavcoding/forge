@@ -848,27 +848,40 @@ assert.equal(estimateCost({
   platform: 'opencode',
   model: 'openrouter/openai/gpt-5.6-sol',
   usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
-}).pricing.provider, 'openrouter');
+}).pricing.provider, 'openai');
 assert.equal(estimateCost({
   platform: 'opencode',
   model: 'opencode-go/gpt-5.6-luna',
   usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
-}).pricing.provider, 'opencode-go');
+}).pricing.provider, 'openai');
 assert.deepEqual(resolvePricingRoute({
   platform: 'codex',
   model: 'gpt-5.6-sol',
   provider: 'openrouter',
-}), { provider: 'openrouter', resolution: 'observed-provider' });
+}), { provider: 'openai', resolution: 'official-agent-default' });
+assert.deepEqual(resolvePricingRoute({ model: 'claude-sonnet-4-5', provider: 'openrouter' }), {
+  provider: 'anthropic', resolution: 'official-model-family',
+});
+assert.equal(estimateCost({
+  model: 'claude-sonnet-4-5',
+  usage: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 20 },
+}).pricing.provider, 'anthropic');
+assert.deepEqual(resolvePricingRoute({ model: 'gemini-2.5-pro' }), {
+  provider: 'google', resolution: 'official-model-family',
+});
+assert.deepEqual(resolvePricingRoute({ model: 'qwen-max' }), {
+  provider: 'alibaba', resolution: 'official-model-family',
+});
 assert.equal(estimateCost({
   platform: 'opencode',
   model: 'gpt-5.6-sol',
   usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
-}).pricing, null);
+}).pricing.provider, 'openai');
 assert.match(formatTelemetry({ model: 'unknown-model' }), /Cost: unavailable \(pricing unavailable: provider route is ambiguous\)/);
 assert.match(formatTelemetry({ platform: 'openai_api', model: 'gpt-5.6', usage: telemetry.usage }), /estimated API cost USD/);
 assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /route official agent default/);
 assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /provider rate card https:\/\/developers\.openai\.com\/api\/docs\/models/);
-assert.match(formatTelemetry({ platform: 'opencode', model: 'openrouter/openai/gpt-5.6-sol', usage: telemetry.usage }), /route model namespace/);
+assert.match(formatTelemetry({ platform: 'opencode', model: 'openrouter/openai/gpt-5.6-sol', usage: telemetry.usage }), /route official model family/);
 assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /snapshot .* from https:\/\/models\.dev\/api\.json/);
 assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, cached_input_tokens: 1, output_tokens: 2 } }), /total unavailable/);
 assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, output_tokens: 2 } }), /cached input usage unavailable/);
@@ -888,6 +901,14 @@ const sessionContext = handle({
   graphify: { attempted: true, status: 'ready', fallback_reason: null, evidence: 'trace fixture' },
 }).hookSpecificOutput.additionalContext;
 const sessionRunId = JSON.parse(sessionContext.split('FORGE_FACTS\n')[1]).run_state.run_id;
+const fixtureStart = (repo, runId) => {
+  const file = path.join(repo, '.forge', 'runs', runId, 'run.json');
+  const state = JSON.parse(fs.readFileSync(file, 'utf8'));
+  state.started_at = '2026-08-13T09:00:00.000Z';
+  state.started_epoch_ms = Date.parse(state.started_at);
+  fs.writeFileSync(file, JSON.stringify(state), 'utf8');
+};
+fixtureStart(tmp, sessionRunId);
 const sessionSummary = [
   '# Forge summary',
   'status: completed',
@@ -1020,6 +1041,39 @@ assert.equal(parsedTraceTelemetry.model_calls, 1);
 assert.deepEqual(parsedTraceTelemetry.tools, { exec: 1 });
 assert.deepEqual(parsedTraceTelemetry.public_skills, ['forge', 'openai-docs']);
 assert.deepEqual(parsedTraceTelemetry.internal_skills, ['node', 'rag']);
+const scopedCodexTrace = [
+  { timestamp: '2026-08-13T09:00:00.000Z', type: 'response_item', payload: {
+    type: 'custom_tool_call', input: 'Get-Content worker-skills/typescript/SKILL.md',
+  } },
+  { timestamp: '2026-08-13T09:00:00.000Z', type: 'event_msg', payload: {
+    type: 'token_count', info: { total_token_usage: {
+      input_tokens: 100, cached_input_tokens: 20, output_tokens: 10,
+    } },
+  } },
+  { timestamp: '2026-08-13T09:00:02.000Z', type: 'response_item', payload: {
+    type: 'custom_tool_call', input: 'Get-Content worker-skills/node/SKILL.md',
+  } },
+  { timestamp: '2026-08-13T09:00:02.000Z', type: 'response_item', payload: {
+    type: 'custom_tool_call', name: 'exec',
+    input: 'await tools.apply_patch("add a fixture mentioning Get-Content worker-skills/typescript/SKILL.md")',
+  } },
+  { timestamp: '2026-08-13T09:00:03.000Z', type: 'event_msg', payload: {
+    type: 'token_count', info: { total_token_usage: {
+      input_tokens: 130, cached_input_tokens: 25, output_tokens: 14,
+    } },
+  } },
+];
+const scopedCodexTelemetry = telemetryFromTrace(scopedCodexTrace, {
+  state: {
+    host: 'codex', model: 'gpt-5.6-luna', public_skills: ['forge'],
+    started_epoch_ms: Date.parse('2026-08-13T09:00:01.000Z'),
+  },
+});
+assert.deepEqual(scopedCodexTelemetry.internal_skills, ['node']);
+assert.equal(scopedCodexTelemetry.usage.input_tokens, 30);
+assert.equal(scopedCodexTelemetry.usage.cached_input_tokens, 5);
+assert.equal(scopedCodexTelemetry.usage.output_tokens, 4);
+assert.notEqual(scopedCodexTelemetry.cost.api_equivalent_usd, null);
 
 const claudeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-claude-trace-'));
 const claudeSessionId = 'claude-session-telemetry-fixture';
@@ -1036,6 +1090,7 @@ const claudeActivationContext = handle({
   graphify: { attempted: true, status: 'ready', fallback_reason: null, evidence: 'Claude trace fixture' },
 }).hookSpecificOutput.additionalContext;
 const claudeRunId = JSON.parse(claudeActivationContext.split('FORGE_FACTS\n')[1]).run_state.run_id;
+fixtureStart(claudeTmp, claudeRunId);
 assert.equal(writeRunSummary({ repo: claudeTmp, runId: claudeRunId, summary: sessionSummary }), true);
 fs.writeFileSync(claudeTrace, [
   JSON.stringify({
@@ -1082,9 +1137,11 @@ const claudeTelemetry = telemetryFromTrace(fs.readFileSync(claudeTrace, 'utf8'),
 assert.equal(claudeTelemetry.platform, 'claude');
 assert.equal(claudeTelemetry.provider, 'anthropic');
 assert.equal(claudeTelemetry.model, 'claude-sonnet-4-5-20250929');
-assert.equal(claudeTelemetry.usage.input_tokens, 140);
+assert.equal(claudeTelemetry.usage.input_tokens, 150);
 assert.equal(claudeTelemetry.usage.cached_input_tokens, 40);
+assert.equal(claudeTelemetry.usage.cache_write_input_tokens, 10);
 assert.equal(claudeTelemetry.usage.output_tokens, 20);
+assert.equal(claudeTelemetry.cost.api_equivalent_usd, 0.0006495);
 assert.equal(claudeTelemetry.turns, 1);
 assert.equal(claudeTelemetry.model_calls, 1);
 assert.deepEqual(claudeTelemetry.tools, { Read: 1 });
@@ -1092,6 +1149,22 @@ assert.deepEqual(claudeTelemetry.public_skills, ['forge']);
 assert.deepEqual(claudeTelemetry.internal_skills, ['node']);
 assert.match(formatTelemetry(claudeTelemetry), /Model: claude \/ anthropic \/ claude-sonnet-4-5-20250929/);
 assert.match(formatTelemetry(claudeTelemetry), /Skills: public forge; internal node/);
+const claudeBashTelemetry = telemetryFromTrace(JSON.stringify({
+  type: 'assistant',
+  message: {
+    model: 'claude-sonnet-4-5',
+    content: [{
+      type: 'tool_use', name: 'Bash',
+      input: { command: 'Get-Content "C:\\plugin\\worker-skills\\typescript\\SKILL.md"' },
+    }],
+    usage: { input_tokens: 10, output_tokens: 2 },
+  },
+}), { state: { host: 'claude', model: 'default', public_skills: ['forge'] } });
+assert.equal(claudeBashTelemetry.model, 'claude-sonnet-4-5');
+assert.equal(claudeBashTelemetry.provider, 'anthropic');
+assert.deepEqual(claudeBashTelemetry.internal_skills, ['typescript']);
+assert.equal(claudeBashTelemetry.usage.cached_input_tokens, 0);
+assert.notEqual(claudeBashTelemetry.cost.api_equivalent_usd, null);
 const claudeFinalize = spawnSync(process.execPath, [
   fileURLToPath(new URL('./finalize.mjs', import.meta.url)),
   '--existing', '--repo', claudeTmp, '--run-id', claudeRunId,
@@ -1108,6 +1181,14 @@ assert.match(claudeSummary, /Skills: public forge; internal node/);
 assert.match(claudeSummary, /Data source: host trace:/);
 assert.deepEqual(handleSessionEnd({ cwd: claudeTmp, session_id: claudeSessionId, transcript_path: claudeTrace }), { processed: 1, enriched: 1 });
 
+const unrelatedRun = ensureRun(tmp, 'unrelated trace reference', 'explicit_marker', {
+  sessionId: 'another-session', transcriptPath: sessionTrace,
+});
+fs.appendFileSync(sessionTrace, `${JSON.stringify({
+  type: 'response_item', payload: {
+    type: 'function_call_output', output: `Summary: .forge/runs/${unrelatedRun.run_id}/summary.md`,
+  },
+})}\n`, 'utf8');
 const sessionEndResult = handleSessionEnd({ cwd: tmp, session_id: sessionId, transcript_path: sessionTrace });
 assert.deepEqual(sessionEndResult, { processed: 1, enriched: 1 });
 const enrichedSummary = fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8');
