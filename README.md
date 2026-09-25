@@ -183,7 +183,6 @@ when one is available.
 The `Update model pricing` GitHub workflow refreshes the catalog every Monday.
 When prices change, it runs Forge's checks, creates a pull request containing
 only the generated catalog, and merges it without changing plugin versions.
-Large removals or price changes above 10x fail for manual investigation.
 Maintainers can run `npm run pricing:update` or verify freshness with
 `npm run pricing:check`.
 
