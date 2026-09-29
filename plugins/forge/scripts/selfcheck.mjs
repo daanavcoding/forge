@@ -23,6 +23,7 @@ import { ensureRun, writeRunSummary } from './run-state.mjs';
 import { estimateCost, formatTelemetry, resolvePricingRoute, telemetryFromTrace } from './telemetry.mjs';
 import { codexTraceContext, locateCodexTranscript } from './codex-trace.mjs';
 import { buildPricingSnapshot, updatePricing, validatePricingSnapshot } from './update-pricing.mjs';
+import { OFFICIAL_PRICING } from './official-pricing.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-plugin-'));
 const missingGraphify = path.join(tmp, 'missing-graphify');
@@ -81,50 +82,35 @@ assert.equal(codexManifest.skills, './skills/');
 assert.equal(codexManifest.hooks, undefined);
 assert.equal(fs.existsSync(new URL('../hooks/hooks.json', import.meta.url)), true);
 assert.equal(validatePricingSnapshot(pricingSnapshot), pricingSnapshot);
-assert.ok(Object.keys(pricingSnapshot.providers).length >= 10);
-assert.ok(Object.values(pricingSnapshot.providers).reduce((count, provider) => count + Object.keys(provider.models).length, 0) >= 100);
-const pricingFixture = buildPricingSnapshot({
-  example: {
-    name: 'Example Provider',
-    models: {
-      'example-model': {
-        cost: {
-          input: 1,
-          output: 4,
-          cache_read: 0.1,
-          tiers: [{ tier: { type: 'context', size: 200_000 }, input: 2, output: 6, cache_read: 0.2 }],
-        },
-      },
-      'unpriced-model': { cost: null },
-    },
-  },
-}, { updatedAt: '2026-09-02T00:00:00.000Z' });
-assert.deepEqual(pricingFixture.providers.example.models['example-model'], {
-  input: 1,
-  output: 4,
-  cached_input: 0.1,
-  tiers: [{ context_tokens_at_least: 200_000, input: 2, output: 6, cached_input: 0.2 }],
-});
-assert.equal(pricingFixture.providers.example.models['unpriced-model'], undefined);
-assert.throws(() => buildPricingSnapshot({ example: { models: { unsafe: { cost: { input: -1, output: 1 } } } } }), /non-negative price/);
+assert.deepEqual(buildPricingSnapshot(), pricingSnapshot);
+assert.deepEqual(Object.keys(pricingSnapshot.providers),
+  ['anthropic', 'cohere', 'deepseek', 'google', 'minimax', 'mistral', 'moonshotai',
+    'openai', 'xai', 'xiaomi', 'zai']);
+assert.equal(pricingSnapshot.providers.openrouter, undefined);
+const invalidPricing = structuredClone(OFFICIAL_PRICING);
+invalidPricing.providers.openai.models['gpt-6-luna'].input = -1;
+assert.throws(() => buildPricingSnapshot(invalidPricing), /non-negative price/);
+const routerPricing = structuredClone(OFFICIAL_PRICING);
+routerPricing.providers.openrouter = routerPricing.providers.openai;
+assert.throws(() => buildPricingSnapshot(routerPricing), /unofficial pricing provider/);
+const largePricing = structuredClone(OFFICIAL_PRICING);
+largePricing.providers.openai.models['gpt-6-luna'].input = 1_000_001;
+assert.equal(buildPricingSnapshot(largePricing).providers.openai.models['gpt-6-luna'].input, 1_000_001);
 const pricingFixtureFile = path.join(tmp, 'pricing', 'model-pricing.json');
-const pricingFixtureSource = {
-  example: { name: 'Example Provider', models: { model: { cost: { input: 1, output: 2 } } } },
-  removed: { name: 'Removed Provider', models: { model: { cost: { input: 1, output: 2 } } } },
-};
-assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource, now: new Date('2026-09-02T00:00:00Z') })).changed, true);
-assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource, now: new Date('2026-09-03T00:00:00Z') })).changed, false);
+const pricingFixtureSource = structuredClone(OFFICIAL_PRICING);
+assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource })).changed, true);
+assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource })).changed, false);
 const pricingFixtureBeforeCheck = fs.readFileSync(pricingFixtureFile, 'utf8');
 const changedPricingFixtureSource = structuredClone(pricingFixtureSource);
-changedPricingFixtureSource.example.models.model.cost.output = 3;
+changedPricingFixtureSource.providers.openai.models['gpt-6-luna'].output = 3;
 assert.equal((await updatePricing({ file: pricingFixtureFile, raw: changedPricingFixtureSource, check: true })).changed, true);
 assert.equal(fs.readFileSync(pricingFixtureFile, 'utf8'), pricingFixtureBeforeCheck);
-changedPricingFixtureSource.example.models.model.cost.input = 100;
-delete changedPricingFixtureSource.removed;
+changedPricingFixtureSource.providers.openai.models['gpt-6-luna'].input = 100;
+delete changedPricingFixtureSource.providers.anthropic;
 assert.equal((await updatePricing({ file: pricingFixtureFile, raw: changedPricingFixtureSource })).changed, true);
 const reducedPricingFixture = validatePricingSnapshot(JSON.parse(fs.readFileSync(pricingFixtureFile, 'utf8')));
-assert.equal(reducedPricingFixture.providers.example.models.model.input, 100);
-assert.equal(reducedPricingFixture.providers.removed, undefined);
+assert.equal(reducedPricingFixture.providers.openai.models['gpt-6-luna'].input, 100);
+assert.equal(reducedPricingFixture.providers.anthropic, undefined);
 assert.equal(claudeManifest.name, portableManifest.name);
 assert.equal(claudeManifest.version, portableManifest.version);
 assert.equal(claudeManifest.skills, './skills/');
@@ -140,9 +126,10 @@ if (sourceCheckout) {
   assert.equal(repositoryPackage.scripts['pricing:update'], 'node plugins/forge/scripts/update-pricing.mjs');
   assert.equal(repositoryPackage.scripts['pricing:check'], 'node plugins/forge/scripts/update-pricing.mjs --check');
   assert.match(pricingWorkflow, /cron: "23 7 \* \* 1"/);
-  assert.match(pricingWorkflow, /git add -- plugins\/forge\/data\/model-pricing\.json/);
-  assert.match(pricingWorkflow, /gh pr merge "\$pr_number" --squash --delete-branch/);
-  assert.doesNotMatch(pricingWorkflow, /npm version|plugin\.json|marketplace\.json/);
+  assert.match(pricingWorkflow, /run: npm run pricing:check/);
+  assert.match(pricingWorkflow, /run: npm run plugin:check/);
+  assert.match(pricingWorkflow, /contents: read/);
+  assert.doesNotMatch(pricingWorkflow, /gh pr|git push|npm test|npm version/);
   assert.equal(codexMarketplace.name, 'forge');
   assert.equal(codexMarketplace.plugins[0].name, 'forge');
   assert.equal(codexMarketplace.plugins[0].source.path, './plugins/forge');
@@ -337,7 +324,7 @@ assert.deepEqual(handle({
   transcript_path: continuationTrace,
 }), {});
 
-const active = handle({ prompt: '$forge verify this tiny fixture', cwd: tmp });
+const active = handle({ prompt: '$forge verify this tiny fixture', cwd: tmp, host: 'codex' });
 const context = active.hookSpecificOutput.additionalContext;
 assert.equal(active.hookSpecificOutput.hookEventName, 'UserPromptSubmit');
 assert.match(context, /FORGE_PLUGIN_CONTEXT/);
@@ -778,6 +765,7 @@ const telemetry = {
   usage: {
     input_tokens: 1_000_000,
     cached_input_tokens: 200_000,
+    cache_write_input_tokens: 0,
     output_tokens: 100_000,
     reasoning_output_tokens: 40_000,
     total_tokens: 1_100_000,
@@ -795,64 +783,116 @@ assert.equal(estimateCost({
   platform: 'openai_api',
   model: 'gpt-5.6-luna',
   usage: telemetry.usage,
-}).estimated_usd, 0.284);
+}).estimated_usd, 0.508);
 assert.equal(estimateCost({
   platform: 'openai_api',
   model: 'gpt-5.6-sol',
   usage: telemetry.usage,
-}).estimated_usd, 5.28);
+}).estimated_usd, 9.56);
 assert.equal(estimateCost({
   platform: 'anthropic_api',
-  model: 'claude-opus-4-5',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  model: 'claude-opus-5',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
 }).estimated_usd, 5);
 assert.equal(estimateCost({
   platform: 'anthropic_api',
-  model: 'claude-opus-4-5',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  model: 'claude-opus-5',
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
 }).pricing.provider_source, 'https://platform.claude.com/docs/en/about-claude/pricing');
-assert.equal(estimateCost({
-  platform: 'google_api',
-  model: 'gemini-2.5-flash',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
-}).estimated_usd, 0.3);
-assert.equal(estimateCost({
-  platform: 'google_api',
-  model: 'gemini-2.5-flash',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
-}).pricing.provider_source, 'https://ai.google.dev/gemini-api/docs/pricing');
 assert.equal(estimateCost({
   platform: 'anthropic_api',
   model: 'custom-model',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
   pricing: { input: 3, output: 15, source: 'vendor rate card', as_of: '2026-08-01' },
-}).estimated_usd, 3);
+}).estimated_usd, null);
+assert.equal(estimateCost({
+  platform: 'xiaomi_api', model: 'mimo-v2.5-pro',
+  usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 20 },
+}).estimated_usd, 0.000043644);
+assert.equal(estimateCost({
+  platform: 'zai_api', model: 'glm-5',
+  usage: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 20 },
+}).estimated_usd, 0.000164);
+assert.equal(estimateCost({
+  platform: 'minimax_api', model: 'minimax-m2.7',
+  usage: { input_tokens: 100, cached_input_tokens: 40, cache_write_input_tokens: 10,
+    output_tokens: 20 },
+}).estimated_usd, 0.00004515);
+const deepseekUsage = { input_tokens: 100, cached_input_tokens: 40,
+  uncached_input_tokens: 60, output_tokens: 20 };
+assert.equal(estimateCost({ platform: 'deepseek_api', model: 'deepseek-flash',
+  usage: deepseekUsage, at: '2026-09-29T02:00:00Z' }).estimated_usd, 0.00004224);
+assert.equal(estimateCost({ platform: 'deepseek_api', model: 'deepseek-flash',
+  usage: deepseekUsage, at: '2026-09-29T05:00:00Z' }).estimated_usd, 0.00002112);
+assert.match(estimateCost({ platform: 'deepseek_api', model: 'deepseek-flash',
+  usage: deepseekUsage }).reason, /call time required/);
+assert.equal(estimateCost({ platform: 'moonshotai_api', model: 'kimi-k2.5',
+  usage: deepseekUsage }).estimated_usd, null);
+assert.equal(estimateCost({ platform: 'moonshotai_api', model: 'kimi-k2.6',
+  usage: deepseekUsage }).estimated_usd, 0.0001434);
+assert.equal(estimateCost({ platform: 'moonshotai_api', model: 'kimi-k3',
+  usage: { input_tokens: 150, uncached_input_tokens: 100, cached_input_tokens: 40,
+    cache_write_input_tokens: 10, cache_write_5m_input_tokens: 0,
+    cache_write_1h_input_tokens: 10, output_tokens: 20 } }).estimated_usd, 0.000672);
+const kimiTrace = telemetryFromTrace(JSON.stringify({
+  timestamp: '2026-09-29T02:00:00Z', type: 'assistant',
+  message: { id: 'kimi-api-call', model: 'kimi-k3', usage: {
+    input_tokens: 100, cache_read_input_tokens: 40,
+    cache_creation_input_tokens: 10,
+    cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 10 },
+    output_tokens: 20,
+  } },
+}), { state: { host: 'claude' } });
+assert.equal(kimiTrace.provider, 'moonshotai');
+assert.equal(kimiTrace.usage.input_tokens, 150);
+assert.equal(kimiTrace.cost.api_equivalent_usd, 0.000672);
+const kimiOpenAITrace = telemetryFromTrace(JSON.stringify({
+  timestamp: '2026-09-29T02:00:00Z', type: 'assistant',
+  message: { id: 'kimi-openai-call', model: 'kimi-k3', usage: {
+    prompt_tokens: 150, completion_tokens: 20,
+    prompt_tokens_details: { cached_tokens: 40, cache_write_tokens: 10 },
+  } },
+}), { state: { host: 'codex' } });
+assert.equal(kimiOpenAITrace.usage.cache_write_input_tokens, 10);
+assert.match(kimiOpenAITrace.cost.reason, /cache-write duration usage unavailable/);
+const deepseekTrace = telemetryFromTrace(JSON.stringify({
+  timestamp: '2026-09-29T02:00:00Z', type: 'assistant',
+  message: { id: 'deepseek-api-call', model: 'deepseek-flash', usage: {
+    prompt_tokens: 100, completion_tokens: 20,
+    prompt_cache_hit_tokens: 40, prompt_cache_miss_tokens: 60,
+  } },
+}), { state: { host: 'deepseek_api' } });
+assert.equal(deepseekTrace.usage.input_tokens, 100);
+assert.equal(deepseekTrace.usage.cached_input_tokens, 40);
+assert.equal(deepseekTrace.usage.uncached_input_tokens, 60);
+assert.equal(deepseekTrace.usage.output_tokens, 20);
+assert.equal(deepseekTrace.cost.estimated_usd, 0.00004224);
 const codexRoute = resolvePricingRoute({ platform: 'codex', model: 'gpt-5.6-sol' });
 assert.deepEqual(codexRoute, { provider: 'openai', resolution: 'official-agent-default' });
 assert.equal(estimateCost({
   platform: 'codex',
   model: 'gpt-5.6-sol',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
 }).pricing.provider, 'openai');
 assert.equal(estimateCost({
   platform: 'codex',
   model: 'gpt-5.6-sol',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
-}).pricing.provider_source, 'https://developers.openai.com/api/docs/models');
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
+}).pricing.provider_source, 'https://developers.openai.com/api/docs/pricing');
 assert.equal(estimateCost({
   platform: 'claude',
   model: 'claude-opus-4-5',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
 }).pricing.provider, 'anthropic');
 assert.equal(estimateCost({
   platform: 'opencode',
   model: 'openrouter/openai/gpt-5.6-sol',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
 }).pricing.provider, 'openai');
 assert.equal(estimateCost({
   platform: 'opencode',
   model: 'opencode-go/gpt-5.6-luna',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
 }).pricing.provider, 'openai');
 assert.deepEqual(resolvePricingRoute({
   platform: 'codex',
@@ -864,7 +904,7 @@ assert.deepEqual(resolvePricingRoute({ model: 'claude-sonnet-4-5', provider: 'op
 });
 assert.equal(estimateCost({
   model: 'claude-sonnet-4-5',
-  usage: { input_tokens: 100, cached_input_tokens: 0, output_tokens: 20 },
+  usage: { input_tokens: 100, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 20 },
 }).pricing.provider, 'anthropic');
 assert.deepEqual(resolvePricingRoute({ model: 'gemini-2.5-pro' }), {
   provider: 'google', resolution: 'official-model-family',
@@ -875,16 +915,16 @@ assert.deepEqual(resolvePricingRoute({ model: 'qwen-max' }), {
 assert.equal(estimateCost({
   platform: 'opencode',
   model: 'gpt-5.6-sol',
-  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, output_tokens: 0 },
+  usage: { input_tokens: 1_000_000, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 0 },
 }).pricing.provider, 'openai');
 assert.match(formatTelemetry({ model: 'unknown-model' }), /Cost: unavailable \(pricing unavailable: provider route is ambiguous\)/);
-assert.match(formatTelemetry({ platform: 'openai_api', model: 'gpt-5.6', usage: telemetry.usage }), /estimated API cost USD/);
+assert.match(formatTelemetry({ platform: 'openai_api', model: 'gpt-5.6-sol', model_calls: 1, usage: telemetry.usage }), /estimated API cost USD/);
 assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /route official agent default/);
-assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /provider rate card https:\/\/developers\.openai\.com\/api\/docs\/models/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /provider rate card https:\/\/developers\.openai\.com\/api\/docs\/pricing/);
 assert.match(formatTelemetry({ platform: 'opencode', model: 'openrouter/openai/gpt-5.6-sol', usage: telemetry.usage }), /route official model family/);
-assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /snapshot .* from https:\/\/models\.dev\/api\.json/);
-assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, cached_input_tokens: 1, output_tokens: 2 } }), /total unavailable/);
-assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, output_tokens: 2 } }), /cached input usage unavailable/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-sol', usage: telemetry.usage }), /verified 2026-09-29 from https:\/\/developers\.openai\.com\/api\/docs\/models\/gpt-5.6-sol/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, cached_input_tokens: 1, output_tokens: 2 } }), /cache write unavailable/);
+assert.match(formatTelemetry({ platform: 'codex', model: 'gpt-5.6-luna', usage: { input_tokens: 3, output_tokens: 2 } }), /cache-read usage unavailable/);
 assert.doesNotMatch(formatTelemetry({}), /Skills:|Host limits:|Duration:|Tokens:|Cost:/);
 assert.match(formatTelemetry({ public_skills: ['forge'], internal_skills: ['node'] }), /Skills: public forge; internal node/);
 assert.doesNotMatch(formatTelemetry({ public_skills: ['forge'] }), /forge x1/);
@@ -894,6 +934,7 @@ const sessionId = 'session-telemetry-fixture';
 const sessionContext = handle({
   prompt: '$forge capture trace telemetry',
   cwd: tmp,
+  host: 'codex',
   session_id: sessionId,
   transcript_path: sessionTrace,
   model: 'gpt-5.6-luna',
@@ -1073,7 +1114,7 @@ assert.deepEqual(scopedCodexTelemetry.internal_skills, ['node']);
 assert.equal(scopedCodexTelemetry.usage.input_tokens, 30);
 assert.equal(scopedCodexTelemetry.usage.cached_input_tokens, 5);
 assert.equal(scopedCodexTelemetry.usage.output_tokens, 4);
-assert.notEqual(scopedCodexTelemetry.cost.api_equivalent_usd, null);
+assert.equal(scopedCodexTelemetry.cost.api_equivalent_usd, null);
 
 const claudeTmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-claude-trace-'));
 const claudeSessionId = 'claude-session-telemetry-fixture';
@@ -1116,6 +1157,7 @@ fs.writeFileSync(claudeTrace, [
         input_tokens: 100,
         cache_read_input_tokens: 40,
         cache_creation_input_tokens: 10,
+        cache_creation: { ephemeral_5m_input_tokens: 10, ephemeral_1h_input_tokens: 0 },
         output_tokens: 20,
       },
     },
@@ -1142,6 +1184,28 @@ assert.equal(claudeTelemetry.usage.cached_input_tokens, 40);
 assert.equal(claudeTelemetry.usage.cache_write_input_tokens, 10);
 assert.equal(claudeTelemetry.usage.output_tokens, 20);
 assert.equal(claudeTelemetry.cost.api_equivalent_usd, 0.0006495);
+const duplicateClaudeRecord = {
+  type: 'assistant', message: {
+    id: 'same-api-call', model: 'claude-sonnet-5',
+    usage: {
+      input_tokens: 100, cache_read_input_tokens: 40,
+      cache_creation_input_tokens: 10,
+      cache_creation: { ephemeral_5m_input_tokens: 0, ephemeral_1h_input_tokens: 10 },
+      output_tokens: 20,
+    },
+  },
+};
+const deduplicatedClaude = telemetryFromTrace([duplicateClaudeRecord, duplicateClaudeRecord], {
+  state: { host: 'claude' },
+});
+assert.equal(deduplicatedClaude.model_calls, 1);
+assert.equal(deduplicatedClaude.usage.input_tokens, 150);
+assert.equal(deduplicatedClaude.usage.cache_write_1h_input_tokens, 10);
+assert.equal(deduplicatedClaude.cost.api_equivalent_usd, 0.000448);
+const fastClaudeRecord = structuredClone(duplicateClaudeRecord);
+fastClaudeRecord.message.usage.speed = 'fast';
+assert.match(telemetryFromTrace([fastClaudeRecord], { state: { host: 'claude' } }).cost.reason,
+  /official rate for observed service conditions is unavailable/);
 assert.equal(claudeTelemetry.turns, 1);
 assert.equal(claudeTelemetry.model_calls, 1);
 assert.deepEqual(claudeTelemetry.tools, { Read: 1 });
@@ -1192,7 +1256,7 @@ fs.appendFileSync(sessionTrace, `${JSON.stringify({
 const sessionEndResult = handleSessionEnd({ cwd: tmp, session_id: sessionId, transcript_path: sessionTrace });
 assert.deepEqual(sessionEndResult, { processed: 1, enriched: 1 });
 const enrichedSummary = fs.readFileSync(path.join(tmp, '.forge', 'runs', sessionRunId, 'summary.md'), 'utf8');
-assert.match(enrichedSummary, /input 100; cached 40; output 20/);
+assert.match(enrichedSummary, /input tokens 100; output tokens 20; cache read 40; cache write unavailable/);
 assert.match(enrichedSummary, /Duration: 2000 ms/);
 assert.match(enrichedSummary, /Host limits: plan plus; credit balance 0; primary 45% used, 300 min window/);
 assert.doesNotMatch(enrichedSummary, /Tokens: unavailable/);
