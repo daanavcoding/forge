@@ -17,6 +17,7 @@
     "plugin:install-client": "node plugins/forge/scripts/install-client.mjs",
     "pricing:update": "node plugins/forge/scripts/update-pricing.mjs",
     "pricing:check": "node plugins/forge/scripts/update-pricing.mjs --check",
+    "pricing:refresh": "node plugins/forge/scripts/update-pricing.mjs --refresh-models-dev",
     "bench": "node bench/v5.mjs",
     "bench:baseline": "node bench/v5.mjs --baseline --confirm-subscription-usage",
     "bench:live": "node bench/v5.mjs --arm both --runs 5 --judge --confirm-subscription-usage",

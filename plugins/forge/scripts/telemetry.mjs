@@ -5,7 +5,7 @@ import { PRIVATE_SKILL_CATALOG } from '../worker-skills/catalog.mjs';
 const MILLION = 1_000_000;
 const PRICING_FILE = new URL('../data/model-pricing.json', import.meta.url);
 
-// The runtime uses only the checked-in, first-party rate card snapshot.
+// The runtime uses only the checked-in rate snapshot; official rows override Models.dev fallbacks.
 const AGENT_DEFAULT_PROVIDERS = {
   codex: 'openai',
   codex_cli: 'openai',
@@ -237,7 +237,8 @@ function knownPricing(model, { platform = null, provider = null } = {}) {
         max_exact_context_tokens: integer(match.rate.max_exact_context_tokens),
         currency: 'USD',
         source: oneLine(match.rate.source_url),
-        as_of: oneLine(catalog.source?.verified_at),
+        source_kind: oneLine(match.rate.source_kind) || 'official',
+        as_of: oneLine(match.rate.as_of) || oneLine(catalog.source?.verified_at),
         catalog_sha256: oneLine(catalog.catalog_sha256),
         resolution: route.resolution,
         provider_source: oneLine(catalog.providers[providerId].source_url),
@@ -726,7 +727,9 @@ export function estimateCost({ model = null, platform = null, provider = null, u
       as_of: rate.as_of || null,
     },
     reason: isApiPlatform(platform)
-      ? 'estimated from API list prices'
+      ? (rate.source_kind === 'models.dev'
+        ? 'estimated from Models.dev API list prices'
+        : 'estimated from API list prices')
       : 'actual platform charge unavailable; API-equivalent only',
   };
 }

@@ -22,7 +22,13 @@ import { PRIVATE_SKILL_CATALOG } from '../worker-skills/catalog.mjs';
 import { ensureRun, writeRunSummary } from './run-state.mjs';
 import { estimateCost, formatTelemetry, resolvePricingRoute, telemetryFromTrace } from './telemetry.mjs';
 import { codexTraceContext, locateCodexTranscript } from './codex-trace.mjs';
-import { buildPricingSnapshot, updatePricing, validatePricingSnapshot } from './update-pricing.mjs';
+import {
+  buildModelsDevSnapshot,
+  buildPricingSnapshot,
+  updatePricing,
+  validateModelsDevSnapshot,
+  validatePricingSnapshot,
+} from './update-pricing.mjs';
 import { OFFICIAL_PRICING } from './official-pricing.mjs';
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'forge-plugin-'));
@@ -66,6 +72,7 @@ const portableManifest = JSON.parse(fs.readFileSync(new URL('../plugin.json', im
 const codexManifest = JSON.parse(fs.readFileSync(new URL('../.codex-plugin/plugin.json', import.meta.url), 'utf8'));
 const claudeManifest = JSON.parse(fs.readFileSync(new URL('../.claude-plugin/plugin.json', import.meta.url), 'utf8'));
 const pricingSnapshot = JSON.parse(fs.readFileSync(new URL('../data/model-pricing.json', import.meta.url), 'utf8'));
+const modelsDevSnapshot = JSON.parse(fs.readFileSync(new URL('../data/models-dev-pricing.json', import.meta.url), 'utf8'));
 const repositoryReadmeUrl = new URL('../../../README.md', import.meta.url);
 const repositoryPackageUrl = new URL('../../../package.json', import.meta.url);
 const repositoryPricingWorkflowUrl = new URL('../../../.github/workflows/update-model-pricing.yml', import.meta.url);
@@ -82,7 +89,22 @@ assert.equal(codexManifest.skills, './skills/');
 assert.equal(codexManifest.hooks, undefined);
 assert.equal(fs.existsSync(new URL('../hooks/hooks.json', import.meta.url)), true);
 assert.equal(validatePricingSnapshot(pricingSnapshot), pricingSnapshot);
-assert.deepEqual(buildPricingSnapshot(), pricingSnapshot);
+assert.equal(validateModelsDevSnapshot(modelsDevSnapshot).catalog_sha256, modelsDevSnapshot.catalog_sha256);
+assert.deepEqual(buildPricingSnapshot(OFFICIAL_PRICING, modelsDevSnapshot), pricingSnapshot);
+assert.equal(pricingSnapshot.providers.anthropic.models['claude-sonnet-5-5'].source_kind, undefined);
+assert.equal(modelsDevSnapshot.providers.anthropic.models['claude-sonnet-5-5'].input, 2);
+const automaticRate = Object.entries(pricingSnapshot.providers)
+  .flatMap(([provider, entry]) => Object.entries(entry.models).map(([model, rate]) => ({ provider, model, rate })))
+  .find(({ rate }) => rate.source_kind === 'models.dev');
+assert.ok(automaticRate, 'Models.dev fallback rates must be present');
+const automaticCost = estimateCost({
+  model: automaticRate.model,
+  provider: automaticRate.provider,
+  platform: 'test_api',
+  usage: { input_tokens: 100, cached_input_tokens: 0, cache_write_input_tokens: 0, output_tokens: 10 },
+});
+assert.equal(automaticCost.pricing.source_kind, 'models.dev');
+assert.equal(automaticCost.reason, 'estimated from Models.dev API list prices');
 assert.deepEqual(Object.keys(pricingSnapshot.providers),
   ['anthropic', 'cohere', 'deepseek', 'google', 'minimax', 'mistral', 'moonshotai',
     'openai', 'xai', 'xiaomi', 'zai']);
@@ -96,6 +118,28 @@ assert.throws(() => buildPricingSnapshot(routerPricing), /unofficial pricing pro
 const largePricing = structuredClone(OFFICIAL_PRICING);
 largePricing.providers.openai.models['gpt-6-luna'].input = 1_000_001;
 assert.equal(buildPricingSnapshot(largePricing).providers.openai.models['gpt-6-luna'].input, 1_000_001);
+const modelsDevFixture = buildModelsDevSnapshot({
+  anthropic: {
+    name: 'Anthropic',
+    models: {
+      'claude-sonnet-5-5': {
+        cost: { input: 2.5, output: 12, cache_read: 0.25, cache_write: 3 },
+        last_updated: '2026-09-29',
+      },
+      'claude-sonnet-5-6': {
+        cost: { input: 3, output: 15, cache_read: 0.3, cache_write: 3.75 },
+        last_updated: '2026-09-29',
+      },
+      'claude-unpriced': { name: 'Unpriced model' },
+    },
+  },
+});
+const mergedPricingFixture = buildPricingSnapshot(OFFICIAL_PRICING, modelsDevFixture);
+assert.equal(mergedPricingFixture.providers.anthropic.models['claude-sonnet-5-5'].input, 2);
+assert.equal(mergedPricingFixture.providers.anthropic.models['claude-sonnet-5-6'].input, 3);
+assert.equal(mergedPricingFixture.providers.anthropic.models['claude-sonnet-5-6'].source_kind, 'models.dev');
+assert.equal(mergedPricingFixture.providers.anthropic.models['claude-sonnet-5-6'].as_of, '2026-09-29');
+assert.equal(mergedPricingFixture.providers.anthropic.models['claude-unpriced'], undefined);
 const pricingFixtureFile = path.join(tmp, 'pricing', 'model-pricing.json');
 const pricingFixtureSource = structuredClone(OFFICIAL_PRICING);
 assert.equal((await updatePricing({ file: pricingFixtureFile, raw: pricingFixtureSource })).changed, true);
@@ -126,11 +170,16 @@ if (sourceCheckout) {
   assert.equal(repositoryPackage.scripts.prepack, 'npm run pricing:update');
   assert.equal(repositoryPackage.scripts['pricing:update'], 'node plugins/forge/scripts/update-pricing.mjs');
   assert.equal(repositoryPackage.scripts['pricing:check'], 'node plugins/forge/scripts/update-pricing.mjs --check');
-  assert.match(pricingWorkflow, /cron: "23 7 \* \* 1"/);
+  assert.equal(repositoryPackage.scripts['pricing:refresh'], 'node plugins/forge/scripts/update-pricing.mjs --refresh-models-dev');
+  assert.match(pricingWorkflow, /cron: "23 7 \* \* \*"/);
+  assert.match(pricingWorkflow, /run: npm run pricing:refresh/);
   assert.match(pricingWorkflow, /run: npm run pricing:check/);
   assert.match(pricingWorkflow, /run: npm run plugin:check/);
-  assert.match(pricingWorkflow, /contents: read/);
-  assert.doesNotMatch(pricingWorkflow, /gh pr|git push|npm test|npm version/);
+  assert.match(pricingWorkflow, /contents: write/);
+  assert.match(pricingWorkflow, /pull-requests: write/);
+  assert.match(pricingWorkflow, /peter-evans\/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1/);
+  assert.match(pricingWorkflow, /branch: automation\/model-pricing/);
+  assert.doesNotMatch(pricingWorkflow, /npm test|npm version/);
   assert.equal(codexMarketplace.name, 'forge');
   assert.equal(codexMarketplace.plugins[0].name, 'forge');
   assert.equal(codexMarketplace.plugins[0].source.path, './plugins/forge');
