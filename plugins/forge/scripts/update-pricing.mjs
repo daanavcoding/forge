@@ -4,12 +4,26 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
 import { fileURLToPath } from 'node:url';
+import { OFFICIAL_PRICING } from './official-pricing.mjs';
 
-export const PRICING_SOURCE_URL = 'https://models.dev/api.json';
-export const PRICING_SCHEMA_VERSION = 1;
-
+export const PRICING_SCHEMA_VERSION = 2;
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_PRICING_FILE = path.resolve(scriptDirectory, '..', 'data', 'model-pricing.json');
+
+const OFFICIAL_DOMAINS = {
+  openai: 'developers.openai.com',
+  anthropic: 'platform.claude.com',
+  google: 'ai.google.dev',
+  xai: 'docs.x.ai',
+  mistral: 'docs.mistral.ai',
+  deepseek: 'api-docs.deepseek.com',
+  cohere: 'docs.cohere.com',
+  alibaba: 'help.aliyun.com',
+  moonshotai: 'platform.kimi.ai',
+  minimax: 'platform.minimax.io',
+  zai: 'docs.z.ai',
+  xiaomi: 'platform.xiaomimimo.com',
+};
 
 function object(value, label) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
@@ -19,77 +33,100 @@ function object(value, label) {
 }
 
 function price(value, label) {
-  const number = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(number) || number < 0 || number > 1_000_000) {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
     throw new Error(`${label} must be a finite non-negative price`);
   }
-  return number;
+  return value;
 }
 
 function optionalPrice(value, label) {
-  return value === undefined || value === null ? undefined : price(value, label);
+  return value === undefined ? undefined : price(value, label);
 }
 
-function normalizeTier(value, label) {
-  const tier = object(value, label);
-  const selector = object(tier.tier, `${label}.tier`);
-  if (selector.type !== 'context') throw new Error(`${label}.tier.type is unsupported`);
-  const size = Number(selector.size);
-  if (!Number.isSafeInteger(size) || size <= 0) throw new Error(`${label}.tier.size is invalid`);
-  const normalized = {
-    context_tokens_at_least: size,
-    input: price(tier.input, `${label}.input`),
-    output: price(tier.output, `${label}.output`),
-  };
-  const cacheRead = optionalPrice(tier.cache_read, `${label}.cache_read`);
-  const cacheWrite = optionalPrice(tier.cache_write, `${label}.cache_write`);
-  if (cacheRead !== undefined) normalized.cached_input = cacheRead;
-  if (cacheWrite !== undefined) normalized.cache_write = cacheWrite;
-  return normalized;
-}
-
-function normalizeCost(value, label) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (value.input === undefined || value.output === undefined) return null;
-  const normalized = {
-    input: price(value.input, `${label}.input`),
-    output: price(value.output, `${label}.output`),
-  };
-  const cacheRead = optionalPrice(value.cache_read, `${label}.cache_read`);
-  const cacheWrite = optionalPrice(value.cache_write, `${label}.cache_write`);
-  if (cacheRead !== undefined) normalized.cached_input = cacheRead;
-  if (cacheWrite !== undefined) normalized.cache_write = cacheWrite;
-  if (Array.isArray(value.tiers) && value.tiers.length) {
-    normalized.tiers = value.tiers
-      .map((tier, index) => normalizeTier(tier, `${label}.tiers[${index}]`))
-      .sort((left, right) => left.context_tokens_at_least - right.context_tokens_at_least);
+function officialUrl(value, providerId, label) {
+  let url;
+  try { url = new URL(value); } catch { throw new Error(`${label} must be an official HTTPS URL`); }
+  if (url.protocol !== 'https:' || url.hostname !== OFFICIAL_DOMAINS[providerId]) {
+    throw new Error(`${label} must be an official ${providerId} URL`);
   }
-  return normalized;
+  return url.href;
 }
 
 function sortedEntries(value) {
   return Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0);
 }
 
+function normalizeRate(value, providerId, label) {
+  const raw = object(value, label);
+  const rate = {
+    input: price(raw.input, `${label}.input`),
+    output: price(raw.output, `${label}.output`),
+  };
+  for (const key of ['cached_input', 'cache_write', 'cache_write_5m', 'cache_write_1h']) {
+    const normalized = optionalPrice(raw[key], `${label}.${key}`);
+    if (normalized !== undefined) rate[key] = normalized;
+  }
+  if (raw.source_url) rate.source_url = officialUrl(raw.source_url, providerId, `${label}.source_url`);
+  if (raw.max_exact_context_tokens !== undefined) {
+    if (!Number.isSafeInteger(raw.max_exact_context_tokens) || raw.max_exact_context_tokens <= 0) {
+      throw new Error(`${label}.max_exact_context_tokens is invalid`);
+    }
+    rate.max_exact_context_tokens = raw.max_exact_context_tokens;
+  }
+  if (raw.context_tiers !== undefined) {
+    if (!Array.isArray(raw.context_tiers)) throw new Error(`${label}.context_tiers must be an array`);
+    rate.context_tiers = raw.context_tiers.map((tier, index) => {
+      const item = object(tier, `${label}.context_tiers[${index}]`);
+      if (!Number.isSafeInteger(item.input_tokens_above) || item.input_tokens_above <= 0) {
+        throw new Error(`${label}.context_tiers[${index}].input_tokens_above is invalid`);
+      }
+      const normalized = normalizeRate({ ...item, source_url: undefined, context_tiers: undefined }, providerId,
+        `${label}.context_tiers[${index}]`);
+      return { input_tokens_above: item.input_tokens_above, ...normalized };
+    }).sort((left, right) => left.input_tokens_above - right.input_tokens_above);
+  }
+  if (raw.time_tiers !== undefined) {
+    if (!Array.isArray(raw.time_tiers)) throw new Error(`${label}.time_tiers must be an array`);
+    rate.time_tiers = raw.time_tiers.map((tier, index) => {
+      const item = object(tier, `${label}.time_tiers[${index}]`);
+      if (!Array.isArray(item.weekday_utc) || !item.weekday_utc.length
+        || item.weekday_utc.some((day) => !Number.isInteger(day) || day < 0 || day > 6)
+        || !Array.isArray(item.hour_ranges_utc) || !item.hour_ranges_utc.length
+        || item.hour_ranges_utc.some((range) => !Array.isArray(range) || range.length !== 2
+          || !Number.isInteger(range[0]) || !Number.isInteger(range[1])
+          || range[0] < 0 || range[0] >= range[1] || range[1] > 24)) {
+        throw new Error(`${label}.time_tiers[${index}] has invalid UTC hours`);
+      }
+      const normalized = normalizeRate({ ...item, source_url: undefined, context_tiers: undefined,
+        time_tiers: undefined }, providerId, `${label}.time_tiers[${index}]`);
+      return { weekday_utc: item.weekday_utc, hour_ranges_utc: item.hour_ranges_utc, ...normalized };
+    });
+  }
+  return rate;
+}
+
 export function normalizePricingCatalog(raw) {
+  const source = object(raw, 'pricing source');
   const providers = {};
-  for (const [providerId, providerValue] of sortedEntries(object(raw, 'catalog'))) {
-    if (!/^[a-z0-9][a-z0-9._-]*$/i.test(providerId)) continue;
-    const provider = object(providerValue, `provider ${providerId}`);
+  for (const [providerId, value] of sortedEntries(object(source.providers, 'pricing source.providers'))) {
+    if (!OFFICIAL_DOMAINS[providerId]) throw new Error(`unofficial pricing provider: ${providerId}`);
+    const provider = object(value, `provider ${providerId}`);
     const models = {};
-    for (const [modelId, modelValue] of sortedEntries(object(provider.models, `provider ${providerId}.models`))) {
-      const model = object(modelValue, `model ${providerId}/${modelId}`);
-      const cost = normalizeCost(model.cost, `model ${providerId}/${modelId}.cost`);
-      if (cost) models[modelId] = cost;
+    for (const [modelId, model] of sortedEntries(object(provider.models, `provider ${providerId}.models`))) {
+      if (!/^[a-z0-9][a-z0-9._-]*$/i.test(modelId)) throw new Error(`invalid model ID: ${modelId}`);
+      const rate = normalizeRate(model, providerId, `model ${providerId}/${modelId}`);
+      if (!rate.source_url) throw new Error(`model ${providerId}/${modelId} has no official source URL`);
+      models[modelId] = rate;
     }
     if (Object.keys(models).length) {
       providers[providerId] = {
-        name: String(provider.name || providerId).replace(/\s+/g, ' ').trim(),
+        name: String(provider.name || providerId).trim(),
+        source_url: officialUrl(provider.source_url, providerId, `provider ${providerId}.source_url`),
         models,
       };
     }
   }
-  if (!Object.keys(providers).length) throw new Error('catalog contains no usable model pricing');
+  if (!Object.keys(providers).length) throw new Error('no verified official model pricing');
   return providers;
 }
 
@@ -97,15 +134,15 @@ function digest(value) {
   return crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 }
 
-export function buildPricingSnapshot(raw, { updatedAt = new Date().toISOString() } = {}) {
+export function buildPricingSnapshot(raw = OFFICIAL_PRICING) {
+  const verifiedAt = String(object(raw, 'pricing source').verified_at || '');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(verifiedAt) || !Number.isFinite(Date.parse(verifiedAt))) {
+    throw new Error('official pricing verification date is invalid');
+  }
   const providers = normalizePricingCatalog(raw);
   return {
     schema_version: PRICING_SCHEMA_VERSION,
-    source: {
-      name: 'Models.dev',
-      url: PRICING_SOURCE_URL,
-      updated_at: updatedAt,
-    },
+    source: { name: 'Official provider rate cards', verified_at: verifiedAt },
     catalog_sha256: digest(providers),
     providers,
   };
@@ -115,25 +152,13 @@ export function validatePricingSnapshot(value) {
   const snapshot = object(value, 'snapshot');
   if (snapshot.schema_version !== PRICING_SCHEMA_VERSION) throw new Error('unsupported pricing schema version');
   const source = object(snapshot.source, 'snapshot.source');
-  if (source.url !== PRICING_SOURCE_URL || !Number.isFinite(Date.parse(source.updated_at))) {
-    throw new Error('invalid pricing source metadata');
+  if (source.name !== 'Official provider rate cards'
+    || !/^\d{4}-\d{2}-\d{2}$/.test(String(source.verified_at || ''))
+    || !Number.isFinite(Date.parse(source.verified_at))) {
+    throw new Error('invalid official pricing source metadata');
   }
-  const providers = object(snapshot.providers, 'snapshot.providers');
+  const providers = normalizePricingCatalog({ providers: snapshot.providers });
   if (digest(providers) !== snapshot.catalog_sha256) throw new Error('pricing catalog checksum mismatch');
-  normalizePricingCatalog(Object.fromEntries(Object.entries(providers).map(([id, provider]) => [id, {
-    name: provider.name,
-    models: Object.fromEntries(Object.entries(provider.models || {}).map(([model, cost]) => [model, {
-      cost: {
-        ...cost,
-        cache_read: cost.cached_input,
-        tiers: Array.isArray(cost.tiers) ? cost.tiers.map((tier) => ({
-          ...tier,
-          cache_read: tier.cached_input,
-          tier: { type: 'context', size: tier.context_tokens_at_least },
-        })) : undefined,
-      },
-    }]))
-  }])));
   return snapshot;
 }
 
@@ -142,21 +167,6 @@ async function readJson(file) {
     if (error?.code === 'ENOENT') return null;
     throw error;
   }
-}
-
-async function fetchCatalog(url) {
-  const response = await fetch(url, {
-    headers: { accept: 'application/json', 'user-agent': 'forge-pricing-updater/1' },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!response.ok) throw new Error(`pricing source returned HTTP ${response.status}`);
-  const contentType = response.headers.get('content-type') || '';
-  if (!contentType.toLowerCase().includes('application/json')) throw new Error('pricing source did not return JSON');
-  const length = Number(response.headers.get('content-length'));
-  if (Number.isFinite(length) && length > 10_000_000) throw new Error('pricing source exceeds 10 MB limit');
-  const body = await response.text();
-  if (Buffer.byteLength(body) > 10_000_000) throw new Error('pricing source exceeds 10 MB limit');
-  return JSON.parse(body);
 }
 
 async function writeAtomic(file, content) {
@@ -170,24 +180,23 @@ async function writeAtomic(file, content) {
   }
 }
 
-export async function updatePricing({ file = DEFAULT_PRICING_FILE, check = false, raw = null, now = new Date() } = {}) {
+export async function updatePricing({ file = DEFAULT_PRICING_FILE, check = false, raw = OFFICIAL_PRICING } = {}) {
   const current = await readJson(file);
-  if (current) validatePricingSnapshot(current);
-  const incoming = buildPricingSnapshot(raw || await fetchCatalog(PRICING_SOURCE_URL), { updatedAt: now.toISOString() });
-  const changed = !current || current.catalog_sha256 !== incoming.catalog_sha256;
-  if (!changed) return { changed: false, file, catalog_sha256: current.catalog_sha256 };
-  if (check) return { changed: true, file, catalog_sha256: incoming.catalog_sha256 };
+  if (current?.schema_version === PRICING_SCHEMA_VERSION) validatePricingSnapshot(current);
+  else if (current && current.schema_version !== 1) throw new Error('unsupported existing pricing schema version');
+  const incoming = buildPricingSnapshot(raw);
+  validatePricingSnapshot(incoming);
+  const changed = !current || JSON.stringify(current) !== JSON.stringify(incoming);
+  if (!changed || check) return { changed, file, catalog_sha256: incoming.catalog_sha256 };
   await writeAtomic(file, `${JSON.stringify(incoming, null, 2)}\n`);
   return { changed: true, file, catalog_sha256: incoming.catalog_sha256 };
 }
 
 async function main() {
-  const { values } = parseArgs({
-    options: {
-      check: { type: 'boolean', default: false },
-      file: { type: 'string' },
-    },
-  });
+  const { values } = parseArgs({ options: {
+    check: { type: 'boolean', default: false },
+    file: { type: 'string' },
+  } });
   const result = await updatePricing({
     file: values.file ? path.resolve(values.file) : DEFAULT_PRICING_FILE,
     check: values.check,

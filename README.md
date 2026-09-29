@@ -168,24 +168,30 @@ avoid speculative abstractions, and make the smallest correct change.
 
 ### Model pricing
 
-Forge estimates API-equivalent cost from the generated
-[`model-pricing.json`](plugins/forge/data/model-pricing.json) catalog. It
-contains validated USD-per-million-token rates from
-[Models.dev](https://models.dev/) and is read locally at runtime; hooks and
-summaries never fetch pricing from the network. Recognized model families use
-their first-party provider rates: Claude → Anthropic, GPT → OpenAI, Gemini →
-Google, and the corresponding first-party providers for other known families.
-This takes precedence over gateway namespaces and observed provider labels.
-For other models, Forge uses an observed provider, a `provider/model` namespace,
-or the first-party agent default (Codex → OpenAI, Claude Code → Anthropic).
-Unresolved routes remain unavailable. Telemetry shows the Models.dev snapshot
-and the official provider rate-card reference when one is available; the
-catalog itself is sourced from Models.dev.
+Forge reads [`model-pricing.json`](plugins/forge/data/model-pricing.json)
+locally. It contains one standard text-token API rate card per exact model,
+verified against the model's official provider documentation. Gateway and
+reseller prices are excluded. Claude models use Anthropic, GPT models use
+OpenAI, Grok uses xAI, and other recognized families use their first-party
+provider regardless of a gateway label. The catalog also includes verified
+MiMo, GLM, DeepSeek, MiniMax and Kimi models. Codex defaults to OpenAI and
+Claude Code to Anthropic. An exact model without verified official rates has
+no cost estimate.
 
-The `Update model pricing` GitHub workflow refreshes the catalog every Monday.
-When prices change, it runs Forge's checks, creates a pull request containing
-only the generated catalog, and merges it without changing plugin versions.
-Maintainers can run `npm run pricing:update` or verify freshness with
+Telemetry counts the host-reported input, output, cache-read and cache-write
+tokens per model call. Claude and Kimi K3 cache writes use the reported
+5-minute or 1-hour rate. DeepSeek rates use each call's UTC timestamp. The
+cost uses each call's official rate and applicable tier. If the host
+omits a required category or a rate depends on an unobserved condition, Forge
+shows the cost as unavailable. Subscription usage shows an API-equivalent
+token cost, not the user's subscription charge; API estimates exclude tool,
+storage, regional and other non-token charges. There is no separate
+"cache output" field in the supported host usage records.
+
+The Monday GitHub workflow checks that the bundled catalog matches the
+reviewed official rates and that the plugin contracts pass. Maintainers update
+[`official-pricing.mjs`](plugins/forge/scripts/official-pricing.mjs) after
+checking the provider's rate card, then run `npm run pricing:update` and
 `npm run pricing:check`.
 
 ## Contributing

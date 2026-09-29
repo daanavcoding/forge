@@ -4,45 +4,7 @@ import fs from 'node:fs';
 const MILLION = 1_000_000;
 const PRICING_FILE = new URL('../data/model-pricing.json', import.meta.url);
 
-// This small fallback keeps cost estimation available if a damaged package is
-// missing its generated catalog. Normal releases use the versioned Models.dev
-// snapshot and never access the network while Forge is running.
-const FALLBACK_PRICING = {
-  'gpt-5.6-sol': {
-    input: 4,
-    cached_input: 0.4,
-    output: 20,
-    provider: 'openai',
-    as_of: '2026-09-02',
-    source: 'https://developers.openai.com/api/docs/models/gpt-5.6-sol',
-  },
-  'gpt-5.6-terra': {
-    input: 2,
-    cached_input: 0.2,
-    output: 12,
-    provider: 'openai',
-    as_of: '2026-09-02',
-    source: 'https://developers.openai.com/api/docs/models/gpt-5.6-terra',
-  },
-  'gpt-5.6-luna': {
-    input: 0.2,
-    cached_input: 0.02,
-    output: 1.2,
-    provider: 'openai',
-    as_of: '2026-09-02',
-    source: 'https://developers.openai.com/api/docs/models/gpt-5.6-luna',
-  },
-};
-
-// Models.dev is the offline data snapshot. These links identify the first-
-// party rate card that the agent default represents; they do not turn the
-// runtime into a network client.
-const OFFICIAL_PROVIDER_SOURCES = {
-  openai: 'https://developers.openai.com/api/docs/models',
-  anthropic: 'https://platform.claude.com/docs/en/about-claude/pricing',
-  google: 'https://ai.google.dev/gemini-api/docs/pricing',
-};
-
+// The runtime uses only the checked-in, first-party rate card snapshot.
 const AGENT_DEFAULT_PROVIDERS = {
   codex: 'openai',
   codex_cli: 'openai',
@@ -72,10 +34,6 @@ const PROVIDER_ALIASES = [
   [/mistral/, 'mistral'],
   [/deepseek/, 'deepseek'],
   [/cohere/, 'cohere'],
-  [/groq/, 'groq'],
-  [/azure/, 'azure'],
-  [/bedrock|amazon/, 'amazon-bedrock'],
-  [/openrouter/, 'openrouter'],
 ];
 
 let pricingCatalog;
@@ -88,7 +46,7 @@ function loadPricingCatalog() {
     const checksum = providers && typeof providers === 'object'
       ? crypto.createHash('sha256').update(JSON.stringify(providers)).digest('hex')
       : null;
-    pricingCatalog = parsed?.schema_version === 1 && checksum === parsed.catalog_sha256
+    pricingCatalog = parsed?.schema_version === 2 && checksum === parsed.catalog_sha256
       ? parsed
       : null;
   } catch {
@@ -171,7 +129,7 @@ function normalizedIdentifier(value) {
 function providerFromValue(value) {
   const normalized = normalizedIdentifier(value);
   if (!normalized) return null;
-  if (/^[a-z0-9][a-z0-9._-]*$/i.test(normalized)) return normalized;
+  if (loadPricingCatalog()?.providers?.[normalized]) return normalized;
   return null;
 }
 
@@ -184,9 +142,10 @@ function providerFromModelFamily(model) {
     [/^(?:gpt-|o[1345](?:-|$)|chatgpt-)/, 'openai'],
     [/^gemini(?:-|$)/, 'google'],
     [/^grok(?:-|$)/, 'xai'],
+    [/^mimo(?:-|$)/, 'xiaomi'],
     [/^mistral(?:-|$)|^codestral(?:-|$)/, 'mistral'],
     [/^deepseek(?:-|$)/, 'deepseek'],
-    [/^command-r(?:-|$)/, 'cohere'],
+    [/^command-(?:a|r)(?:-|$)/, 'cohere'],
     [/^qwen(?:-|$)|^qvq(?:-|$)/, 'alibaba'],
     [/^kimi(?:-|$)/, 'moonshotai'],
     [/^minimax(?:-|$)/, 'minimax'],
@@ -267,51 +226,24 @@ function knownPricing(model, { platform = null, provider = null } = {}) {
         model: match.key,
         provider: providerId,
         input,
-        cached_input: finite(match.rate.cached_input) ?? input,
+        cached_input: finite(match.rate.cached_input),
         cache_write: finite(match.rate.cache_write),
+        cache_write_5m: finite(match.rate.cache_write_5m),
+        cache_write_1h: finite(match.rate.cache_write_1h),
         output,
-        tiers: Array.isArray(match.rate.tiers) ? match.rate.tiers : [],
+        context_tiers: Array.isArray(match.rate.context_tiers) ? match.rate.context_tiers : [],
+        time_tiers: Array.isArray(match.rate.time_tiers) ? match.rate.time_tiers : [],
+        max_exact_context_tokens: integer(match.rate.max_exact_context_tokens),
         currency: 'USD',
-        source: catalog.source?.url || 'https://models.dev/api.json',
-        as_of: oneLine(catalog.source?.updated_at),
+        source: oneLine(match.rate.source_url),
+        as_of: oneLine(catalog.source?.verified_at),
         catalog_sha256: oneLine(catalog.catalog_sha256),
         resolution: route.resolution,
-        provider_source: OFFICIAL_PROVIDER_SOURCES[providerId] || null,
+        provider_source: oneLine(catalog.providers[providerId].source_url),
       };
     }
   }
-  const fallbackKey = providerId === 'openai'
-    ? Object.keys(FALLBACK_PRICING).find((candidate) => normalized === candidate)
-    : null;
-  return fallbackKey ? {
-    model: fallbackKey,
-    ...FALLBACK_PRICING[fallbackKey],
-    currency: 'USD',
-    tiers: [],
-    resolution: route.resolution,
-    provider_source: OFFICIAL_PROVIDER_SOURCES.openai,
-  } : null;
-}
-
-function suppliedPricing(value) {
-  if (!value || typeof value !== 'object') return null;
-  const input = finite(value.input_per_million ?? value.input);
-  const cached = finite(value.cached_input_per_million ?? value.cached_input);
-  const cacheWrite = finite(value.cache_write_per_million ?? value.cache_write);
-  const output = finite(value.output_per_million ?? value.output);
-  if (input === null || output === null) return null;
-  return {
-    model: oneLine(value.model),
-    provider: oneLine(value.provider),
-    input,
-    cached_input: cached ?? input,
-    cache_write: cacheWrite,
-    output,
-    currency: oneLine(value.currency) || 'USD',
-    source: oneLine(value.source),
-    as_of: oneLine(value.as_of),
-    tiers: Array.isArray(value.tiers) ? value.tiers : [],
-  };
+  return null;
 }
 
 function isApiPlatform(platform) {
@@ -356,21 +288,37 @@ function rateLimitsShape(value) {
 
 function usageShape(value, { cachedInputIsSeparate = false } = {}) {
   if (!value || typeof value !== 'object') return null;
-  const inputTokens = integer(value.input_tokens ?? value.inputTokens ?? value.input);
-  const cachedInputTokens = integer(value.cached_input_tokens ?? value.cache_read_input_tokens ?? value.cachedInputTokens ?? value.cache_read);
-  const cacheWriteTokens = integer(value.cache_write_input_tokens ?? value.cache_creation_input_tokens ?? value.cacheWriteInputTokens);
+  const inputDetails = value.input_tokens_details ?? value.prompt_tokens_details ?? {};
+  const cacheHits = integer(value.prompt_cache_hit_tokens);
+  const cacheMisses = integer(value.prompt_cache_miss_tokens);
+  const inputTokens = integer(value.input_tokens ?? value.prompt_tokens ?? value.inputTokens ?? value.input)
+    ?? (cacheHits !== null && cacheMisses !== null ? cacheHits + cacheMisses : null);
+  const cachedInputTokens = integer(value.cached_input_tokens ?? value.cache_read_input_tokens
+    ?? value.cachedInputTokens ?? value.cache_read ?? inputDetails.cached_tokens ?? cacheHits);
+  const cacheWriteTokens = integer(value.cache_write_input_tokens ?? value.cache_creation_input_tokens
+    ?? value.cacheWriteInputTokens ?? inputDetails.cache_write_tokens);
+  const cacheCreation = value.cache_creation && typeof value.cache_creation === 'object' ? value.cache_creation : {};
+  const cacheWrite5m = integer(cacheCreation.ephemeral_5m_input_tokens ?? value.cache_write_5m_input_tokens);
+  const cacheWrite1h = integer(cacheCreation.ephemeral_1h_input_tokens ?? value.cache_write_1h_input_tokens);
+  const totalInput = cachedInputIsSeparate && inputTokens !== null
+    ? inputTokens + (cachedInputTokens || 0) + (cacheWriteTokens || 0)
+    : inputTokens;
+  const outputTokens = integer(value.output_tokens ?? value.completion_tokens ?? value.outputTokens ?? value.output);
   const usage = {
-    // Claude reports uncached input and cache reads as separate fields. Forge's
-    // normalized cost model stores total input, so combine them only for that
-    // host shape; Codex-style cumulative usage remains unchanged.
-    input_tokens: cachedInputIsSeparate && inputTokens !== null
-      ? inputTokens + (cachedInputTokens || 0) + (cacheWriteTokens || 0)
-      : inputTokens,
+    // Claude reports uncached input and cache reads/writes separately. Codex
+    // reports total input with cache categories included in that total.
+    input_tokens: totalInput,
+    uncached_input_tokens: cachedInputIsSeparate ? inputTokens
+      : totalInput !== null && cachedInputTokens !== null && cacheWriteTokens !== null
+        ? totalInput - cachedInputTokens - cacheWriteTokens : cacheMisses,
     cached_input_tokens: cachedInputIsSeparate ? (cachedInputTokens ?? 0) : cachedInputTokens,
-    cache_write_input_tokens: cacheWriteTokens,
-    output_tokens: integer(value.output_tokens ?? value.outputTokens ?? value.output),
+    cache_write_input_tokens: cachedInputIsSeparate ? (cacheWriteTokens ?? 0) : cacheWriteTokens,
+    cache_write_5m_input_tokens: cachedInputIsSeparate ? (cacheWrite5m ?? 0) : cacheWrite5m,
+    cache_write_1h_input_tokens: cachedInputIsSeparate ? (cacheWrite1h ?? 0) : cacheWrite1h,
+    output_tokens: outputTokens,
     reasoning_output_tokens: integer(value.reasoning_output_tokens ?? value.reasoningOutputTokens ?? value.reasoning_output),
-    total_tokens: integer(value.total_tokens ?? value.totalTokens ?? value.total),
+    total_tokens: integer(value.total_tokens ?? value.totalTokens ?? value.total)
+      ?? (totalInput !== null && outputTokens !== null ? totalInput + outputTokens : null),
   };
   const tokenCount = integer(value.token_count ?? value.tokenCount);
   if (tokenCount !== null) usage.token_count = tokenCount;
@@ -380,7 +328,7 @@ function usageShape(value, { cachedInputIsSeparate = false } = {}) {
 
 function addUsage(left, right) {
   const result = {};
-  for (const key of ['input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
+  for (const key of ['input_tokens', 'uncached_input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'cache_write_5m_input_tokens', 'cache_write_1h_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens']) {
     const a = integer(left?.[key]);
     const b = integer(right?.[key]);
     result[key] = a === null && b === null ? null : (a || 0) + (b || 0);
@@ -394,7 +342,7 @@ function addUsage(left, right) {
 function subtractUsage(current, baseline) {
   if (!current) return null;
   const result = {};
-  for (const key of ['input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens', 'token_count']) {
+  for (const key of ['input_tokens', 'uncached_input_tokens', 'cached_input_tokens', 'cache_write_input_tokens', 'cache_write_5m_input_tokens', 'cache_write_1h_input_tokens', 'output_tokens', 'reasoning_output_tokens', 'total_tokens', 'token_count']) {
     const value = integer(current[key]);
     const before = integer(baseline?.[key]);
     result[key] = value === null ? null : Math.max(0, value - (before || 0));
@@ -450,6 +398,8 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
   let cumulativeUsage = null;
   const perTurnUsages = [];
   const directUsages = [];
+  const directUsageByMessage = new Map();
+  const codexCalls = [];
   let explicitTokenCount = null;
   let explicitDuration = null;
   let explicitLatency = null;
@@ -462,6 +412,7 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
   let taskStarts = 0;
   let observedRateLimits = null;
   let observedModel = oneLine(state.model);
+  let currentModel = observedModel;
   let observedProvider = oneLine(state.provider);
   let observedEffort = oneLine(state.reasoning_effort);
   const toolUsage = {};
@@ -512,6 +463,7 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
       || (messageRole === 'assistant' && Boolean(message));
     const traceModel = oneLine(message?.model ?? threadSettings?.model ?? payload.model ?? record.model);
     if (traceModel && (!observedModel || /^(?:default|inherit)$/i.test(observedModel))) observedModel = traceModel;
+    if (traceModel) currentModel = traceModel;
     observedProvider = observedProvider || oneLine(message?.provider ?? threadSettings?.provider ?? payload.provider ?? record.provider);
     observedEffort = observedEffort || oneLine(message?.reasoning_effort ?? threadSettings?.reasoning_effort ?? payload.reasoning_effort ?? record.reasoning_effort);
     const itemType = String(payload.type || '').toLowerCase();
@@ -583,7 +535,11 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
       const total = usageShape(info?.total_token_usage ?? payload.total_token_usage ?? record.total_token_usage);
       const last = usageShape(info?.last_token_usage ?? payload.last_token_usage ?? record.last_token_usage);
       if (total) cumulativeUsage = total;
-      else if (last) perTurnUsages.push(last);
+      if (last) {
+        codexCalls.push({ model: currentModel, usage: last,
+          at: at === null ? null : new Date(at).toISOString() });
+        if (!total) perTurnUsages.push(last);
+      }
       explicitTokenCount = firstMetric([info, payload, record], ['token_count', 'tokenCount']) ?? explicitTokenCount;
     }
     const messageUsage = message?.usage && typeof message.usage === 'object' ? message.usage : null;
@@ -596,8 +552,19 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
       cachedInputIsSeparate: claudeUsage,
     });
     if (direct) {
-      directUsages.push(direct);
-      if (isAssistantMessage) tokenEvents += 1;
+      const messageId = isAssistantMessage ? oneLine(message?.id) : null;
+      const call = {
+        model: traceModel || currentModel,
+        usage: direct,
+        at: at === null ? null : new Date(at).toISOString(),
+        pricing_conditions: messageUsage ? {
+          service_tier: oneLine(messageUsage.service_tier),
+          inference_geo: oneLine(messageUsage.inference_geo),
+          speed: oneLine(messageUsage.speed),
+        } : null,
+      };
+      if (messageId) directUsageByMessage.set(messageId, call);
+      else directUsages.push(call);
     }
     explicitTokenCount = firstMetric([payload, record], ['token_count', 'tokenCount']) ?? explicitTokenCount;
     explicitDuration = firstMetric([payload, record], ['duration_ms', 'durationMs', 'elapsed_ms', 'elapsedMs', 'duration']) ?? explicitDuration;
@@ -608,14 +575,17 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
     ]) ?? credits;
   }
 
-  let usage = cumulativeUsage;
-  if (cumulativeUsage && (baseline_usage || preRunUsage)) {
+  const uniqueDirectCalls = [...directUsageByMessage.values(), ...directUsages];
+  let usage = codexCalls.length
+    ? codexCalls.reduce((total, call) => addUsage(total, call.usage), null)
+    : cumulativeUsage;
+  if (!codexCalls.length && cumulativeUsage && (baseline_usage || preRunUsage)) {
     usage = subtractUsage(cumulativeUsage, usageShape(baseline_usage) || preRunUsage);
-  } else if (cumulativeUsage && hasPreRunRecords) {
+  } else if (!codexCalls.length && cumulativeUsage && hasPreRunRecords) {
     usage = null;
   }
   if (!usage && perTurnUsages.length) usage = perTurnUsages.reduce((total, item) => addUsage(total, item), null);
-  if (!usage && directUsages.length) usage = directUsages.reduce((total, item) => addUsage(total, item), null);
+  if (!usage && uniqueDirectCalls.length) usage = uniqueDirectCalls.reduce((total, call) => addUsage(total, call.usage), null);
   observedModel ||= preRunModel;
   observedProvider ||= preRunProvider;
   observedEffort ||= preRunEffort;
@@ -645,7 +615,8 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
     latency_ms: explicitLatency,
     model_latency_ms: explicitModelLatency,
     turns: turnContexts || taskStarts || null,
-    model_calls: tokenEvents || null,
+    model_calls: codexCalls.length || uniqueDirectCalls.length || tokenEvents || null,
+    calls: codexCalls.length ? codexCalls : uniqueDirectCalls,
     tool_usage: toolUsage,
     public_skills: [...publicSkills],
     internal_skills: [...internalSkills],
@@ -658,53 +629,63 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
   });
 }
 
-export function estimateCost({ model = null, platform = null, provider = null, usage = {}, pricing = null } = {}) {
-  const rate = suppliedPricing(pricing) || knownPricing(model, { platform, provider });
+export function estimateCost({ model = null, platform = null, provider = null, usage = {}, at = null } = {}) {
+  const rate = knownPricing(model, { platform, provider });
   const input = integer(usage.input_tokens);
   const cached = integer(usage.cached_input_tokens);
-  const cacheWrite = integer(usage.cache_write_input_tokens) ?? 0;
+  const cacheWrite = integer(usage.cache_write_input_tokens);
   const output = integer(usage.output_tokens);
   const route = resolvePricingRoute({ model, platform, provider });
-  if (!rate || input === null || cached === null || output === null || cached + cacheWrite > input) {
-    return {
-      estimated_usd: null,
-      api_equivalent_usd: null,
-      pricing: rate,
-      reason: !rate
-        ? route.resolution === 'ambiguous-agent'
-          ? 'pricing unavailable: provider route is ambiguous'
-          : 'pricing unavailable for this exact model'
-        : input === null || output === null
-        ? 'token usage unavailable'
-        : cached === null
-          ? 'cached input usage unavailable'
-        : 'cached input exceeds total input',
-    };
+  const unavailable = (reason) => ({ estimated_usd: null, api_equivalent_usd: null, pricing: rate, reason });
+  if (!rate) return unavailable(route.resolution === 'ambiguous-agent'
+    ? 'pricing unavailable: provider route is ambiguous'
+    : 'official pricing unavailable for this exact model');
+  if (input === null || output === null) return unavailable('token usage unavailable');
+  if (cached === null) return unavailable('cache-read usage unavailable');
+  const hasWriteRate = (rate.cache_write !== null && rate.cache_write > 0)
+    || rate.cache_write_5m !== null || rate.cache_write_1h !== null;
+  if (cacheWrite === null && hasWriteRate) return unavailable('cache-write usage unavailable');
+  if (cached + (cacheWrite ?? 0) > input) return unavailable('cache categories exceed total input');
+  if (rate.max_exact_context_tokens !== null && input > rate.max_exact_context_tokens) {
+    return unavailable('official pricing for this context size is unavailable');
   }
-  if (cacheWrite > 0 && rate.cache_write == null) {
-    return {
-      estimated_usd: null,
-      api_equivalent_usd: null,
-      pricing: rate,
-      reason: 'cache write pricing unavailable',
-    };
+  const tier = rate.context_tiers.filter((item) => input > item.input_tokens_above).at(-1);
+  let activeRate = tier ? { ...rate, ...tier } : rate;
+  if (rate.time_tiers.length) {
+    const timestamp = timestampMs(at);
+    if (timestamp === null) return unavailable('call time required for official time-dependent pricing');
+    const date = new Date(timestamp);
+    const timeTier = rate.time_tiers.find((item) => item.weekday_utc.includes(date.getUTCDay())
+      && item.hour_ranges_utc.some(([start, end]) => date.getUTCHours() >= start && date.getUTCHours() < end));
+    if (timeTier) activeRate = { ...activeRate, ...timeTier };
   }
-  if ((rate.currency || 'USD').toUpperCase() !== 'USD') {
-    return {
-      estimated_usd: null,
-      api_equivalent_usd: null,
-      pricing: rate,
-      reason: `unsupported pricing currency: ${rate.currency}`,
-    };
+  const uncached = input - cached - (cacheWrite ?? 0);
+  const observedUncached = integer(usage.uncached_input_tokens);
+  if (observedUncached !== null && observedUncached !== uncached) {
+    return unavailable('input token categories do not reconcile');
   }
-  const uncached = input - cached - cacheWrite;
-  const equivalent = ((uncached * rate.input) + (cached * rate.cached_input)
-    + (cacheWrite * (rate.cache_write ?? 0)) + (output * rate.output)) / MILLION;
+  if (cached > 0 && activeRate.cached_input === null) return unavailable('official cache-read rate unavailable');
+  const writes5m = integer(usage.cache_write_5m_input_tokens);
+  const writes1h = integer(usage.cache_write_1h_input_tokens);
+  const durationRates = activeRate.cache_write_5m !== null || activeRate.cache_write_1h !== null;
+  if (cacheWrite > 0 && durationRates && (writes5m === null || writes1h === null
+    || writes5m + writes1h !== cacheWrite)) {
+    return unavailable('cache-write duration usage unavailable');
+  }
+  if (cacheWrite > 0 && !durationRates && activeRate.cache_write === null) {
+    return unavailable('official cache-write rate unavailable');
+  }
+  const equivalent = Number((((uncached * activeRate.input)
+    + (cached * (activeRate.cached_input ?? 0))
+    + (durationRates
+      ? (writes5m * (activeRate.cache_write_5m ?? 0)) + (writes1h * (activeRate.cache_write_1h ?? 0))
+      : (cacheWrite ?? 0) * (activeRate.cache_write ?? 0))
+    + (output * activeRate.output)) / MILLION).toFixed(12));
   return {
     estimated_usd: isApiPlatform(platform) ? equivalent : null,
     api_equivalent_usd: equivalent,
     pricing: {
-      ...rate,
+      ...activeRate,
       currency: 'USD',
       as_of: rate.as_of || null,
     },
@@ -712,6 +693,36 @@ export function estimateCost({ model = null, platform = null, provider = null, u
       ? 'estimated from API list prices'
       : 'actual platform charge unavailable; API-equivalent only',
   };
+}
+
+function estimateCallCosts(calls, { platform, provider }) {
+  let total = 0;
+  let pricing = null;
+  const models = new Set();
+  for (const call of calls) {
+    const model = oneLine(call.model);
+    const conditions = call.pricing_conditions || {};
+    if ((conditions.service_tier && conditions.service_tier !== 'standard')
+      || (conditions.inference_geo && !['not_available', 'us'].includes(conditions.inference_geo))
+      || (conditions.speed && conditions.speed !== 'standard')) {
+      return { estimated_usd: null, api_equivalent_usd: null, pricing: null,
+        reason: `${model || 'unknown model'}: official rate for observed service conditions is unavailable` };
+    }
+    const result = estimateCost({ model, platform, provider, usage: call.usage, at: call.at });
+    if (result.api_equivalent_usd === null) {
+      return { estimated_usd: null, api_equivalent_usd: null, pricing: result.pricing,
+        reason: `${model || 'unknown model'}: ${result.reason}` };
+    }
+    models.add(model);
+    total += result.api_equivalent_usd;
+    pricing = result.pricing;
+  }
+  if (models.size !== 1) pricing = null;
+  total = Number(total.toFixed(12));
+  return { estimated_usd: isApiPlatform(platform) ? total : null,
+    api_equivalent_usd: total, pricing,
+    reason: isApiPlatform(platform) ? 'estimated from official API token rates'
+      : 'actual platform charge unavailable; official API-equivalent token cost' };
 }
 
 export function normalizeTelemetry(value = {}) {
@@ -729,21 +740,30 @@ export function normalizeTelemetry(value = {}) {
     ? countMap(skillUsage)
     : {};
   const toolCalls = integer(value.tool_calls) ?? (Object.keys(tools).length ? Object.values(tools).reduce((sum, count) => sum + count, 0) : null);
-  const cost = estimateCost({
-    model: value.model,
-    platform: value.platform,
-    provider: value.provider,
-    usage,
-    pricing: value.pricing,
-  });
+  const calls = Array.isArray(value.calls) ? value.calls.filter((call) => call && typeof call === 'object') : [];
+  let cost = calls.length
+    ? estimateCallCosts(calls, { platform: value.platform, provider: value.provider })
+    : estimateCost({ model: value.model, platform: value.platform, provider: value.provider, usage,
+      at: value.at });
+  if (!calls.length && cost.api_equivalent_usd !== null && integer(value.model_calls) !== 1
+    && cost.pricing?.context_tiers?.some((tier) => (inputTokens ?? 0) > tier.input_tokens_above)) {
+    cost = { ...cost, estimated_usd: null, api_equivalent_usd: null,
+      reason: 'per-call usage required for context-tier pricing' };
+  }
+  const callProviders = [...new Set(calls.map((call) => resolvePricingRoute({
+    model: call.model, platform: value.platform, provider: value.provider,
+  }).provider).filter(Boolean))];
   const totalTokens = integer(usage.total_tokens);
   const tokenCount = integer(value.token_count ?? value.tokenCount ?? usage.token_count) ?? totalTokens;
   return {
     platform: oneLine(value.platform),
-    provider: cost.pricing?.provider
-      || resolvePricingRoute({ model: value.model, platform: value.platform, provider: value.provider }).provider
-      || oneLine(value.provider),
+    provider: calls.length
+      ? (callProviders.length === 1 ? callProviders[0] : null)
+      : cost.pricing?.provider
+        || resolvePricingRoute({ model: value.model, platform: value.platform, provider: value.provider }).provider,
     model: oneLine(value.model),
+    models: stringList(calls.map((call) => call.model)),
+    calls,
     reasoning_effort: oneLine(value.reasoning_effort),
     activation: oneLine(value.activation),
     graphify_status: oneLine(value.graphify_status ?? value.graphify?.status),
@@ -764,8 +784,11 @@ export function normalizeTelemetry(value = {}) {
     skill_evidence: evidenceMap(value.skill_evidence ?? value.skillEvidence),
     usage: {
       input_tokens: inputTokens,
+      uncached_input_tokens: integer(usage.uncached_input_tokens),
       cached_input_tokens: integer(usage.cached_input_tokens),
       cache_write_input_tokens: integer(usage.cache_write_input_tokens),
+      cache_write_5m_input_tokens: integer(usage.cache_write_5m_input_tokens),
+      cache_write_1h_input_tokens: integer(usage.cache_write_1h_input_tokens),
       output_tokens: outputTokens,
       reasoning_output_tokens: integer(usage.reasoning_output_tokens),
       total_tokens: totalTokens,
@@ -782,15 +805,14 @@ export function formatTelemetry(value = {}) {
   const data = normalizeTelemetry(value);
   const publicSkillList = data.public_skills.length ? data.public_skills.join(', ') : 'unavailable';
   const internalSkillList = data.internal_skills.length ? data.internal_skills.join(', ') : 'unavailable';
-  const platformModel = [data.platform || 'unavailable', data.provider, data.model || 'unavailable', data.reasoning_effort ? `effort ${data.reasoning_effort}` : null]
+  const displayedModel = data.models.length > 1 ? data.models.join(', ') : data.model || 'unavailable';
+  const platformModel = [data.platform || 'unavailable', data.provider, displayedModel, data.reasoning_effort ? `effort ${data.reasoning_effort}` : null]
     .filter(Boolean).join(' / ');
   const tokenLine = [
-    `input ${amount(data.usage.input_tokens)}`,
-    `cached ${amount(data.usage.cached_input_tokens)}`,
-    ...(data.usage.cache_write_input_tokens === null ? [] : [`cache writes ${amount(data.usage.cache_write_input_tokens)}`]),
-    `output ${amount(data.usage.output_tokens)}`,
-    `reasoning ${amount(data.usage.reasoning_output_tokens)}`,
-    `total ${amount(data.usage.total_tokens)}`,
+    `input tokens ${amount(data.usage.input_tokens)}`,
+    `output tokens ${amount(data.usage.output_tokens)}`,
+    `cache read ${amount(data.usage.cached_input_tokens)}`,
+    `cache write ${amount(data.usage.cache_write_input_tokens)}`,
   ].join('; ');
   const costLine = data.cost.estimated_usd !== null
     ? `estimated API cost USD ${money(data.cost.estimated_usd)}`
@@ -812,9 +834,6 @@ export function formatTelemetry(value = {}) {
     rateWindowText('primary', data.rate_limits?.primary),
     rateWindowText('secondary', data.rate_limits?.secondary),
   ].filter(Boolean);
-  const tierText = data.cost.pricing?.tiers?.length
-    ? `; context tiers ${data.cost.pricing.tiers.map((tier) => `${tier.context_tokens_at_least}+`).join(', ')} require per-request usage and are not applied here`
-    : '';
   const routeLabels = {
     'official-agent-default': 'official agent default',
     'official-model-family': 'official model family',
@@ -829,9 +848,11 @@ export function formatTelemetry(value = {}) {
     ? `; provider rate card ${data.cost.pricing.provider_source}`
     : '';
   const pricingText = data.cost.pricing
-    ? `; rates USD/1M input ${data.cost.pricing.input}, cached ${data.cost.pricing.cached_input}, output ${data.cost.pricing.output}${tierText}; snapshot ${data.cost.pricing.as_of?.slice(0, 10) || 'unavailable'} from ${data.cost.pricing.source || 'source unavailable'}${routeText}${providerSourceText}`
+    ? `; rates USD/1M input ${data.cost.pricing.input}, cache read ${amount(data.cost.pricing.cached_input)}, cache write ${amount(data.cost.pricing.cache_write)}, cache write 5m ${amount(data.cost.pricing.cache_write_5m)}, cache write 1h ${amount(data.cost.pricing.cache_write_1h)}, output ${data.cost.pricing.output}; verified ${data.cost.pricing.as_of || 'unavailable'} from ${data.cost.pricing.source || 'source unavailable'}${routeText}${providerSourceText}`
     : '';
-  const hasTokens = Object.values(data.usage).some((value) => value !== null);
+  const hasTokens = [data.usage.input_tokens, data.usage.output_tokens,
+    data.usage.cached_input_tokens, data.usage.cache_write_input_tokens]
+    .some((value) => value !== null);
   const lines = ['## Telemetry'];
   if (data.platform || data.provider || data.model || data.reasoning_effort) lines.push(`- Model: ${platformModel}`);
   if (hasTokens) lines.push(`- Tokens: ${tokenLine}`);

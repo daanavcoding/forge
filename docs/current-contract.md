@@ -83,14 +83,14 @@ This document defines the current public workflow contract.
   and the telemetry source. Host-reported credits used are included only when
   available. The final chat remains a normal user-facing answer followed by a
   summary link.
-- API-equivalent costs use the bundled, generated Models.dev snapshot. Runtime
-  hooks and finalizers never access the network. Recognized model families
-  resolve to their first-party provider before gateway namespaces or observed
-  provider labels (Claude → Anthropic, GPT → OpenAI, Gemini → Google). Other
-  models use an observed provider, an explicit `provider/model` namespace, or
-  the first-party agent default such as Codex → OpenAI and Claude Code →
-  Anthropic. Ambiguous agents do not guess a provider. The
-  summary records the selected route and, where known, the official provider
-  rate-card reference. A scheduled GitHub workflow validates and merges
-  pricing-only changes without changing a plugin version; anomalous changes
-  stop for manual review.
+- API-equivalent token costs use the bundled catalog of exact models checked
+  against official provider rate cards. Runtime hooks and finalizers never
+  access the network. Model families resolve to their first-party provider
+  before gateway labels; Codex defaults to OpenAI and Claude Code to Anthropic.
+  Gateway rates are excluded. Missing token categories, call-level breakdowns,
+  official rates, UTC call time for time-dependent prices, or context conditions
+  make the cost unavailable. The summary
+  records observed input, output, cache reads and cache writes separately,
+  with the official rate-card link. The Monday GitHub workflow verifies the
+  catalog and plugin contracts without writing to the repository. Invalid
+  official data or a corrupt snapshot fails verification.
