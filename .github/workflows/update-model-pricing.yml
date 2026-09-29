@@ -1,8 +1,8 @@
-name: Verify official model pricing
+name: Refresh model pricing catalog
 
 on:
   schedule:
-    - cron: "23 7 * * 1"
+    - cron: "23 7 * * *"
   workflow_dispatch:
 
 concurrency:
@@ -10,12 +10,13 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
+  pull-requests: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -25,8 +26,26 @@ jobs:
         with:
           node-version: 24
 
-      - name: Verify official pricing catalog
+      - name: Refresh models from Models.dev
+        run: npm run pricing:refresh
+
+      - name: Verify pricing snapshot
         run: npm run pricing:check
 
       - name: Verify plugin contracts
         run: npm run plugin:check
+
+      - name: Open or update pricing pull request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          add-paths: |
+            plugins/forge/data/model-pricing.json
+            plugins/forge/data/models-dev-pricing.json
+          branch: automation/model-pricing
+          delete-branch: true
+          commit-message: "chore: refresh model pricing catalog"
+          title: "chore: refresh model pricing catalog"
+          body: |
+            Updates the checked-in model pricing snapshot from Models.dev.
+
+            Official provider rate cards remain authoritative where a model already has a verified rate. New exact model IDs use Models.dev fallback rates and retain their source and upstream update date.

@@ -158,17 +158,21 @@ function stateFor({
     resume_supported: true,
     ...(resumed ? { resume_summary: boundedSummary(resumeSummary) } : {}),
   };
+  const created = timeSnapshot();
+  const started = autoApproved || resumed ? created : null;
   const persistedState = {
     ...state,
-    started_at: timeSnapshot().utc,
-    started_epoch_ms: Date.now(),
+    created_at: created.utc,
+    created_epoch_ms: created.epoch_ms,
+    ...(started ? { started_at: started.utc, started_epoch_ms: started.epoch_ms } : {}),
+    ...(autoApproved ? { approved_at: started.utc, approved_epoch_ms: started.epoch_ms } : {}),
     ...(sessionId ? { session_id: String(sessionId) } : {}),
     ...(transcriptPath ? { transcript_path: path.resolve(String(transcriptPath)) } : {}),
     ...(host ? { host: String(host) } : {}),
     ...(model ? { model: String(model) } : {}),
   };
   const persistent = persistRunState(repo, persistedState);
-  return { ...state, persistent };
+  return { ...persistedState, persistent };
 }
 
 export function createRun(args = {}) {
@@ -196,7 +200,8 @@ export function approveSessionRun({
   const pending = session
     ? listRuns(repo)
       .filter((entry) => entry.session_id === session && entry.status === 'awaiting_approval')
-      .sort((left, right) => Number(right.started_epoch_ms || 0) - Number(left.started_epoch_ms || 0))[0]
+      .sort((left, right) => Number(right.started_epoch_ms || right.created_epoch_ms || 0)
+        - Number(left.started_epoch_ms || left.created_epoch_ms || 0))[0]
     : null;
   if (!pending) {
     return stateFor({
@@ -210,12 +215,15 @@ export function approveSessionRun({
       model,
     });
   }
+  const approvedAt = timeSnapshot();
   const approved = {
     ...pending,
     task: String(pending.task || task || ''),
     status: 'approved',
-    approved_at: timeSnapshot().utc,
-    approved_epoch_ms: Date.now(),
+    approved_at: approvedAt.utc,
+    approved_epoch_ms: approvedAt.epoch_ms,
+    started_at: approvedAt.utc,
+    started_epoch_ms: approvedAt.epoch_ms,
     ...(transcriptPath ? { transcript_path: path.resolve(String(transcriptPath)) } : {}),
     ...(host ? { host: String(host) } : {}),
     ...(model ? { model: String(model) } : {}),
@@ -309,6 +317,14 @@ export function enrichRunSummary({ repo, runId, trace, traceFile = null, telemet
     const paths = pathsFor(repo, safe);
     const current = fs.readFileSync(paths.summary, 'utf8');
     const runState = state || readRunState(repo, safe) || {};
+    const finished = runState.finished_epoch_ms
+      ? { utc: runState.finished_at || new Date(Number(runState.finished_epoch_ms)).toISOString(), epoch_ms: Number(runState.finished_epoch_ms) }
+      : timeSnapshot();
+    const telemetryState = {
+      ...runState,
+      finished_at: finished.utc,
+      finished_epoch_ms: finished.epoch_ms,
+    };
     const observedTraceFile = traceFile || runState.transcript_path || null;
     let observedTrace = trace;
     if ((observedTrace === null || observedTrace === undefined) && observedTraceFile) {
@@ -316,12 +332,16 @@ export function enrichRunSummary({ repo, runId, trace, traceFile = null, telemet
     }
     const suppliedTelemetry = telemetry && typeof telemetry === 'object' && Object.keys(telemetry).length;
     if (!observedTrace && !suppliedTelemetry && /^## Telemetry\s*$/im.test(current)) {
+      const metadata = readRunState(repo, safe);
+      if (metadata && !metadata.finished_epoch_ms) {
+        persistRunState(repo, { ...metadata, finished_at: finished.utc, finished_epoch_ms: finished.epoch_ms });
+      }
       return { enriched: true, reason: 'already-enriched' };
     }
     const observed = suppliedTelemetry
       ? telemetry
       : telemetryFromTrace(observedTrace, {
-        state: runState,
+        state: telemetryState,
         source: observedTraceFile ? `host trace: ${observedTraceFile}` : 'host trace',
       }) || normalizeTelemetry({
         platform: runState.host,
@@ -330,6 +350,7 @@ export function enrichRunSummary({ repo, runId, trace, traceFile = null, telemet
         graphify_status: runState.graphify_status,
         public_skills: runState.public_skills,
         started_at: runState.started_at,
+        finished_at: finished.utc,
         source: 'Forge run state; host trace unavailable',
       });
     const enriched = replaceTelemetry(current, observed);
@@ -338,6 +359,8 @@ export function enrichRunSummary({ repo, runId, trace, traceFile = null, telemet
     if (metadata) {
       persistRunState(repo, {
         ...metadata,
+        finished_at: finished.utc,
+        finished_epoch_ms: finished.epoch_ms,
         telemetry_enriched: true,
         telemetry_source: observed.source || (observedTraceFile ? `host trace: ${observedTraceFile}` : 'Forge run state'),
         ...(observedTraceFile ? { transcript_path: path.resolve(String(observedTraceFile)) } : {}),

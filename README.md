@@ -169,30 +169,32 @@ avoid speculative abstractions, and make the smallest correct change.
 ### Model pricing
 
 Forge reads [`model-pricing.json`](plugins/forge/data/model-pricing.json)
-locally. It contains one standard text-token API rate card per exact model,
-verified against the model's official provider documentation. Gateway and
+locally. It combines exact-model rates checked against official provider cards
+with community fallback rates from Models.dev for models that do not yet have
+an official entry. Official rates always win for the same model. Gateway and
 reseller prices are excluded. Claude models use Anthropic, GPT models use
 OpenAI, Grok uses xAI, and other recognized families use their first-party
-provider regardless of a gateway label. The catalog also includes verified
-MiMo, GLM, DeepSeek, MiniMax and Kimi models. Codex defaults to OpenAI and
-Claude Code to Anthropic. An exact model without verified official rates has
-no cost estimate.
+provider regardless of a gateway label. Codex defaults to OpenAI and Claude
+Code to Anthropic. A model without an exact rate in either source has no cost
+estimate.
 
 Telemetry counts the host-reported input, output, cache-read and cache-write
 tokens per model call. Claude and Kimi K3 cache writes use the reported
 5-minute or 1-hour rate. DeepSeek rates use each call's UTC timestamp. The
-cost uses each call's official rate and applicable tier. If the host
+cost uses each call's matched rate and applicable tier. If the host
 omits a required category or a rate depends on an unobserved condition, Forge
 shows the cost as unavailable. Subscription usage shows an API-equivalent
 token cost, not the user's subscription charge; API estimates exclude tool,
 storage, regional and other non-token charges. There is no separate
 "cache output" field in the supported host usage records.
 
-The Monday GitHub workflow checks that the bundled catalog matches the
-reviewed official rates and that the plugin contracts pass. Maintainers update
-[`official-pricing.mjs`](plugins/forge/scripts/official-pricing.mjs) after
-checking the provider's rate card, then run `npm run pricing:update` and
-`npm run pricing:check`.
+The daily GitHub workflow refreshes
+[`models-dev-pricing.json`](plugins/forge/data/models-dev-pricing.json), rebuilds
+the bundled catalog, checks the plugin contracts, and opens or updates a PR
+when rates change. Official entries remain hand-verified in
+[`official-pricing.mjs`](plugins/forge/scripts/official-pricing.mjs). Run
+`npm run pricing:refresh` to fetch the upstream catalog, or
+`npm run pricing:update` to rebuild from the checked-in sources.
 
 ## Contributing
 

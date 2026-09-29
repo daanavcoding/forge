@@ -1,10 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { PRIVATE_SKILL_CATALOG } from '../worker-skills/catalog.mjs';
 
 const MILLION = 1_000_000;
 const PRICING_FILE = new URL('../data/model-pricing.json', import.meta.url);
 
-// The runtime uses only the checked-in, first-party rate card snapshot.
+// The runtime uses only the checked-in rate snapshot; official rows override Models.dev fallbacks.
 const AGENT_DEFAULT_PROVIDERS = {
   codex: 'openai',
   codex_cli: 'openai',
@@ -236,7 +237,8 @@ function knownPricing(model, { platform = null, provider = null } = {}) {
         max_exact_context_tokens: integer(match.rate.max_exact_context_tokens),
         currency: 'USD',
         source: oneLine(match.rate.source_url),
-        as_of: oneLine(catalog.source?.verified_at),
+        source_kind: oneLine(match.rate.source_kind) || 'official',
+        as_of: oneLine(match.rate.as_of) || oneLine(catalog.source?.verified_at),
         catalog_sha256: oneLine(catalog.catalog_sha256),
         resolution: route.resolution,
         provider_source: oneLine(catalog.providers[providerId].source_url),
@@ -383,6 +385,38 @@ function firstMetric(sources, names) {
   return null;
 }
 
+function selectedToolInputs(payload, toolUseBlocks) {
+  const values = [];
+  const addInput = (value) => {
+    if (typeof value === 'string') {
+      values.push(value);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+      for (const item of value) addInput(item);
+      return;
+    }
+    for (const name of ['file_path', 'path', 'command']) {
+      if (typeof value[name] === 'string') values.push(value[name]);
+    }
+    for (const name of ['input', 'arguments']) {
+      if (Object.hasOwn(value, name)) addInput(value[name]);
+    }
+  };
+  addInput(payload);
+  for (const block of toolUseBlocks) addInput(block.input);
+  return values.join('\n');
+}
+
+function traceMessageIdentity(message, payload, record) {
+  const messageId = oneLine(message?.id);
+  if (messageId) return `message:${messageId}`;
+  const requestId = oneLine(message?.requestId ?? message?.request_id
+    ?? payload.requestId ?? payload.request_id ?? record.requestId ?? record.request_id);
+  return requestId ? `request:${requestId}` : null;
+}
+
 // Extract only stable, scalar observations from a host transcript. The
 // transcript format is intentionally treated as best-effort input: malformed
 // lines, new fields, or missing files must never affect the coding workflow.
@@ -390,6 +424,7 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
   const records = traceRecords(trace);
   if (!records.length) return null;
   const startedMs = timestampMs(state.started_epoch_ms ?? state.started_at);
+  const finishedMs = timestampMs(state.finished_epoch_ms ?? state.finished_at);
   let preRunUsage = null;
   let preRunModel = null;
   let preRunProvider = null;
@@ -416,15 +451,21 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
   let observedProvider = oneLine(state.provider);
   let observedEffort = oneLine(state.reasoning_effort);
   const toolUsage = {};
+  const seenAssistantMessages = new Set();
   const publicSkills = new Set(stringList(listValue(state.public_skills ?? state.publicSkills)));
   const internalSkills = new Set();
   const skillEvidence = {};
   for (const skill of publicSkills) recordEvidence(skillEvidence, skill, 'hook activation');
 
+  let lastSeenMs = null;
   for (const record of records) {
     const payload = record.payload && typeof record.payload === 'object' ? record.payload : record;
     const info = payload.info && typeof payload.info === 'object' ? payload.info : record.info;
-    const at = timestampMs(record.timestamp ?? record.time ?? payload.timestamp ?? payload.time ?? record.at ?? payload.at);
+    const recordedAt = timestampMs(record.timestamp ?? record.time ?? payload.timestamp ?? payload.time ?? record.at ?? payload.at);
+    if (recordedAt !== null) lastSeenMs = recordedAt;
+    const at = recordedAt ?? lastSeenMs;
+    if (at === null && (startedMs !== null || finishedMs !== null)) continue;
+    if (at !== null && finishedMs !== null && at > finishedMs) continue;
     if (startedMs !== null && at !== null && at < startedMs) {
       hasPreRunRecords = true;
       const settings = payload.thread_settings && typeof payload.thread_settings === 'object' ? payload.thread_settings : null;
@@ -453,14 +494,16 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
         : null;
     const messageType = String(record.type || payload.type || '').toLowerCase();
     const messageRole = String(message?.role ?? payload.role ?? '').toLowerCase();
-    const contentBlocks = Array.isArray(message?.content)
-      ? message.content.filter((block) => block && typeof block === 'object')
-      : [];
+    const messageContent = Array.isArray(message?.content)
+      ? message.content
+      : Array.isArray(payload.content) ? payload.content : [];
+    const contentBlocks = messageContent.filter((block) => block && typeof block === 'object');
     const toolUseBlocks = contentBlocks.filter((block) => [
       'tool_use', 'tool-call', 'tool_call', 'function_call', 'function-call',
     ].includes(String(block.type || '').toLowerCase()));
     const isAssistantMessage = messageType === 'assistant'
       || (messageRole === 'assistant' && Boolean(message));
+    const messageIdentity = traceMessageIdentity(message, payload, record);
     const traceModel = oneLine(message?.model ?? threadSettings?.model ?? payload.model ?? record.model);
     if (traceModel && (!observedModel || /^(?:default|inherit)$/i.test(observedModel))) observedModel = traceModel;
     if (traceModel) currentModel = traceModel;
@@ -472,9 +515,11 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
       || messageType === 'user'
       || (messageRole === 'user' && Boolean(message));
     if (isToolCall || isUserMessage) {
-      let serialized = '';
-      try { serialized = JSON.stringify({ payload, message }); } catch { /* Skill metadata is best effort. */ }
-      const searchable = `${String(payload.input ?? payload.arguments ?? '')}\n${serialized.replace(/\\\\/g, '\\')}`;
+      const userText = isUserMessage
+        ? contentBlocks.map((block) => block.text || block.input_text || block.output_text || '').join('\n')
+        : '';
+      const searchable = `${selectedToolInputs(payload, toolUseBlocks)}\n${userText}\n${isUserMessage ? payload.text || '' : ''}`
+        .replace(/\\+/g, '/');
       const publicSkillPattern = /(?:^|[\\/])skills[\\/]+([a-z0-9-]+)[\\/]+SKILL\.md/gi;
       for (const match of searchable.matchAll(publicSkillPattern)) {
         publicSkills.add(match[1]);
@@ -486,34 +531,23 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
         recordEvidence(skillEvidence, match[1], 'host skill attachment');
       }
       if (isToolCall) {
-        // Claude records Read/Bash arguments inside message.content[].input;
-        // Codex records them on the tool-call payload. Normalize JSON-escaped
-        // Windows paths before looking for an actual private skill read.
-        const toolInputs = [payload.input, payload.arguments, ...toolUseBlocks.map((block) => block.input)]
-          .map((value) => typeof value === 'string' ? value : JSON.stringify(value ?? ''))
-          .join('\n');
+        // Read tools use file_path; shell tools use command or input.
+        const toolInputs = selectedToolInputs(payload, toolUseBlocks);
         const directReadTool = ['read', 'bash', 'exec_command'].includes(String(payload.name || '').toLowerCase())
           || toolUseBlocks.some((block) => ['read', 'bash'].includes(String(block.name || '').toLowerCase()));
         const wrappedRead = /tools\.exec_command\s*\(/.test(toolInputs)
-          || (!/tools\.apply_patch\s*\(/.test(toolInputs) && /\b(?:Get-Content|cat)\b/.test(toolInputs));
+          || (!/tools\.apply_patch\s*\(/.test(toolInputs)
+            && (/\b(?:Get-Content|cat)\b/.test(toolInputs)
+              || (/worker-skills/i.test(toolInputs) && /SKILL\.md/i.test(toolInputs))));
         if (directReadTool || wrappedRead) {
-          const skillSearch = `${toolInputs}\n${serialized}`.replace(/\\+/g, '/');
-          const skillPattern = /worker-skills\/+([a-z0-9-]+)\/+SKILL\.md/gi;
-          for (const match of skillSearch.matchAll(skillPattern)) {
-            internalSkills.add(match[1]);
-            recordEvidence(skillEvidence, match[1], 'private SKILL.md read');
-          }
-          if (/worker-skills/i.test(skillSearch) && /SKILL\.md/i.test(skillSearch)) {
-            const names = /\bconst\s+names\s*=\s*(\[[^\]\r\n]*\])/i.exec(skillSearch);
-            if (names) {
-              try {
-                for (const name of JSON.parse(names[1])) {
-                  if (/^[a-z0-9-]+$/i.test(String(name))) {
-                    internalSkills.add(String(name));
-                    recordEvidence(skillEvidence, String(name), 'private SKILL.md batch read');
-                  }
-                }
-              } catch { /* Dynamic batch skill reads are optional telemetry. */ }
+          const skillSearch = toolInputs.replace(/\\+/g, '/');
+          if (/worker-skills/i.test(skillSearch) && !/tools\.apply_patch\s*\(/.test(skillSearch)) {
+            for (const { name } of PRIVATE_SKILL_CATALOG) {
+              const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+              if (new RegExp(`(?:^|[^a-z0-9_-])${escapedName}[/\\\\]+SKILL\\.md\\b`, 'i').test(skillSearch)) {
+                internalSkills.add(name);
+                recordEvidence(skillEvidence, name, 'private SKILL.md read');
+              }
             }
           }
         }
@@ -528,7 +562,10 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
         toolUsage[toolName] = (toolUsage[toolName] || 0) + 1;
       }
     }
-    if (isAssistantMessage) turnContexts += 1;
+    if (isAssistantMessage && (!messageIdentity || !seenAssistantMessages.has(messageIdentity))) {
+      turnContexts += 1;
+      if (messageIdentity) seenAssistantMessages.add(messageIdentity);
+    }
     if (isTokenEvent) {
       tokenEvents += 1;
       observedRateLimits = rateLimitsShape(payload.rate_limits ?? record.rate_limits) || observedRateLimits;
@@ -552,7 +589,7 @@ export function telemetryFromTrace(trace, { state = {}, source = 'host trace', b
       cachedInputIsSeparate: claudeUsage,
     });
     if (direct) {
-      const messageId = isAssistantMessage ? oneLine(message?.id) : null;
+      const messageId = isAssistantMessage ? messageIdentity : null;
       const call = {
         model: traceModel || currentModel,
         usage: direct,
@@ -639,7 +676,7 @@ export function estimateCost({ model = null, platform = null, provider = null, u
   const unavailable = (reason) => ({ estimated_usd: null, api_equivalent_usd: null, pricing: rate, reason });
   if (!rate) return unavailable(route.resolution === 'ambiguous-agent'
     ? 'pricing unavailable: provider route is ambiguous'
-    : 'official pricing unavailable for this exact model');
+    : `precio no disponible para ${oneLine(model) || 'este modelo'}`);
   if (input === null || output === null) return unavailable('token usage unavailable');
   if (cached === null) return unavailable('cache-read usage unavailable');
   const hasWriteRate = (rate.cache_write !== null && rate.cache_write > 0)
@@ -690,7 +727,9 @@ export function estimateCost({ model = null, platform = null, provider = null, u
       as_of: rate.as_of || null,
     },
     reason: isApiPlatform(platform)
-      ? 'estimated from API list prices'
+      ? (rate.source_kind === 'models.dev'
+        ? 'estimated from Models.dev API list prices'
+        : 'estimated from API list prices')
       : 'actual platform charge unavailable; API-equivalent only',
   };
 }
@@ -753,14 +792,18 @@ export function normalizeTelemetry(value = {}) {
   const callProviders = [...new Set(calls.map((call) => resolvePricingRoute({
     model: call.model, platform: value.platform, provider: value.provider,
   }).provider).filter(Boolean))];
-  const totalTokens = integer(usage.total_tokens);
+  const provider = calls.length
+    ? (callProviders.length === 1 ? callProviders[0] : null)
+    : cost.pricing?.provider
+      || resolvePricingRoute({ model: value.model, platform: value.platform, provider: value.provider }).provider;
+  const totalTokens = integer(usage.total_tokens)
+    ?? (provider === 'anthropic' && inputTokens !== null && outputTokens !== null
+      ? inputTokens + outputTokens
+      : null);
   const tokenCount = integer(value.token_count ?? value.tokenCount ?? usage.token_count) ?? totalTokens;
   return {
     platform: oneLine(value.platform),
-    provider: calls.length
-      ? (callProviders.length === 1 ? callProviders[0] : null)
-      : cost.pricing?.provider
-        || resolvePricingRoute({ model: value.model, platform: value.platform, provider: value.provider }).provider,
+    provider,
     model: oneLine(value.model),
     models: stringList(calls.map((call) => call.model)),
     calls,
@@ -811,6 +854,8 @@ export function formatTelemetry(value = {}) {
   const tokenLine = [
     `input tokens ${amount(data.usage.input_tokens)}`,
     `output tokens ${amount(data.usage.output_tokens)}`,
+    `reasoning ${data.provider === 'anthropic' ? 'included in output' : amount(data.usage.reasoning_output_tokens)}`,
+    `total ${amount(data.usage.total_tokens)}`,
     `cache read ${amount(data.usage.cached_input_tokens)}`,
     `cache write ${amount(data.usage.cache_write_input_tokens)}`,
   ].join('; ');
