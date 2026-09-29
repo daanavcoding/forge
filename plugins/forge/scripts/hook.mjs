@@ -95,6 +95,7 @@ function hostName(payload = {}) {
   const explicit = payload.host || process.env.FORGE_HOST;
   const value = String(explicit
     || (process.argv.includes('--codex-only') ? 'codex' : null)
+    || (process.env.CLAUDECODE === '1' || process.env.CLAUDE_CODE_ENTRYPOINT ? 'claude' : null)
     || (process.env.CLAUDE_PLUGIN_ROOT && !process.env.PLUGIN_ROOT ? 'claude' : null)
     || (process.env.CODEX_SESSION_ID || process.env.CODEX_THREAD_ID ? 'codex' : 'generic')).toLowerCase();
   if (value.includes('claude')) return 'claude';
@@ -311,7 +312,7 @@ export function handle(payload = {}, dependencies = {}) {
     skillCatalog,
     `After selection, read and apply only the selected SKILL.md bodies once from PRIVATE_SKILL_ROOT: ${privateSkillRoot}. Do not read bodies for unselected skills or reread a selected body.`,
     `The project context file describes the application and architecture; it must not be a list of skill names. If the supplied ${projectContextFile} block says the file is missing, continue discovery from the repository and create it during the requested commit step.`,
-    'Read each selected SKILL.md through a visible host tool call so the deterministic finalizer can record it. Do not author telemetry values yourself.',
+    'Read each selected SKILL.md in a separate visible host tool call using its absolute path, so the deterministic finalizer can record it. Do not author telemetry values yourself.',
   ].join('\n');
   const facts = {
     forge_plugin: PLUGIN_VERSION,
